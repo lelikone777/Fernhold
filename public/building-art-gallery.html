@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fernhold Building Art Gallery</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Trebuchet MS", sans-serif;
+        background: #22331f;
+        color: #efe5cd;
+      }
+
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0 0 12px;
+      }
+
+      .section {
+        margin-top: 28px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        background: rgba(24, 32, 22, 0.9);
+        border: 1px solid rgba(226, 208, 170, 0.24);
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .card img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        display: block;
+        background:
+          linear-gradient(rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.04)),
+          linear-gradient(180deg, #446537, #2a3f25);
+        border-radius: 8px;
+      }
+
+      .meta {
+        margin-top: 8px;
+      }
+
+      .name {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .path {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #c7bea5;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Fernhold Building Art Gallery</h1>
+      <p>Runtime uses placeholders by default. Approved sprites move into the final set one by one.</p>
+
+      <section class="section">
+        <h2>Active Placeholders</h2>
+        <div id="placeholders" class="grid"></div>
+      </section>
+
+      <section class="section">
+        <h2>Reserved Final Slots</h2>
+        <div id="final" class="grid"></div>
+      </section>
+
+    </main>
+
+    <script>
+      const types = [
+        'small_house',
+        'medium_house',
+        'town_hall',
+        'lumber_mill',
+        'farmhouse',
+        'barn',
+        'storage',
+        'well',
+        'blacksmith',
+        'workshop',
+        'market_stall',
+        'tavern',
+        'watchtower',
+        'shrine',
+        'herb_hut',
+        'fisher_hut',
+        'bakery',
+        'mason_yard',
+        'stable',
+        'large_storage',
+      ];
+
+      const mount = (id, group, withFileCheck = false) => {
+        const root = document.getElementById(id);
+        for (const type of types) {
+          const path = `/assets/visual/buildings/${group}/${type}.png`;
+          const card = document.createElement('article');
+          card.className = 'card';
+          const img = document.createElement('img');
+          img.src = path;
+          img.alt = type;
+          if (withFileCheck) {
+            img.addEventListener('error', () => {
+              card.style.opacity = '0.45';
+              img.style.background = '#2b211d';
+            });
+          }
+          const meta = document.createElement('div');
+          meta.className = 'meta';
+          meta.innerHTML = `<div class="name">${type}</div><div class="path">${path}</div>`;
+          card.append(img, meta);
+          root.append(card);
+        }
+      };
+
+      mount('placeholders', 'placeholders');
+      mount('final', 'final', true);
+    </script>
+  </body>
+  </html>

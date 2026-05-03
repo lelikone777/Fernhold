@@ -1,0 +1,702 @@
+[
+  {
+    "name": "Iron Sword",
+    "slug": "iron_sword",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 1
+  },
+  {
+    "name": "Steel Saber",
+    "slug": "steel_saber",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 2
+  },
+  {
+    "name": "Bronze Dagger",
+    "slug": "bronze_dagger",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 3
+  },
+  {
+    "name": "Moonblade",
+    "slug": "moonblade",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 4
+  },
+  {
+    "name": "Hunter Knife",
+    "slug": "hunter_knife",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 5
+  },
+  {
+    "name": "Flame Blade",
+    "slug": "flame_blade",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 6
+  },
+  {
+    "name": "Ice Brand",
+    "slug": "ice_brand",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 7
+  },
+  {
+    "name": "Thunder Edge",
+    "slug": "thunder_edge",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 8
+  },
+  {
+    "name": "Forest Fang",
+    "slug": "forest_fang",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 9
+  },
+  {
+    "name": "Shadow Kris",
+    "slug": "shadow_kris",
+    "theme": "swords_blades",
+    "row": 1,
+    "column": 10
+  },
+  {
+    "name": "Wooden Buckler",
+    "slug": "wooden_buckler",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 1
+  },
+  {
+    "name": "Iron Shield",
+    "slug": "iron_shield",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 2
+  },
+  {
+    "name": "Kite Shield",
+    "slug": "kite_shield",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 3
+  },
+  {
+    "name": "Tower Shield",
+    "slug": "tower_shield",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 4
+  },
+  {
+    "name": "Dragon Shield",
+    "slug": "dragon_shield",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 5
+  },
+  {
+    "name": "Leather Armor",
+    "slug": "leather_armor",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 6
+  },
+  {
+    "name": "Chainmail",
+    "slug": "chainmail",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 7
+  },
+  {
+    "name": "Plate Armor",
+    "slug": "plate_armor",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 8
+  },
+  {
+    "name": "Knight Cuirass",
+    "slug": "knight_cuirass",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 9
+  },
+  {
+    "name": "Scale Armor",
+    "slug": "scale_armor",
+    "theme": "shields_armor",
+    "row": 2,
+    "column": 10
+  },
+  {
+    "name": "Short Bow",
+    "slug": "short_bow",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 1
+  },
+  {
+    "name": "Long Bow",
+    "slug": "long_bow",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 2
+  },
+  {
+    "name": "Composite Bow",
+    "slug": "composite_bow",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 3
+  },
+  {
+    "name": "Crossbow",
+    "slug": "crossbow",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 4
+  },
+  {
+    "name": "Heavy Crossbow",
+    "slug": "heavy_crossbow",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 5
+  },
+  {
+    "name": "Throwing Axe",
+    "slug": "throwing_axe",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 6
+  },
+  {
+    "name": "Javelin",
+    "slug": "javelin",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 7
+  },
+  {
+    "name": "Sling",
+    "slug": "sling",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 8
+  },
+  {
+    "name": "Boomerang",
+    "slug": "boomerang",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 9
+  },
+  {
+    "name": "Hand Cannon",
+    "slug": "hand_cannon",
+    "theme": "ranged_weapons",
+    "row": 3,
+    "column": 10
+  },
+  {
+    "name": "Oak Staff",
+    "slug": "oak_staff",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 1
+  },
+  {
+    "name": "Crystal Staff",
+    "slug": "crystal_staff",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 2
+  },
+  {
+    "name": "Fire Wand",
+    "slug": "fire_wand",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 3
+  },
+  {
+    "name": "Frost Wand",
+    "slug": "frost_wand",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 4
+  },
+  {
+    "name": "Storm Rod",
+    "slug": "storm_rod",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 5
+  },
+  {
+    "name": "Sun Scepter",
+    "slug": "sun_scepter",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 6
+  },
+  {
+    "name": "Moon Scepter",
+    "slug": "moon_scepter",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 7
+  },
+  {
+    "name": "Totem Focus",
+    "slug": "totem_focus",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 8
+  },
+  {
+    "name": "Rune Orb",
+    "slug": "rune_orb",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 9
+  },
+  {
+    "name": "Arcane Focus",
+    "slug": "arcane_focus",
+    "theme": "staves_wands",
+    "row": 4,
+    "column": 10
+  },
+  {
+    "name": "Health Potion",
+    "slug": "health_potion",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 1
+  },
+  {
+    "name": "Mana Potion",
+    "slug": "mana_potion",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 2
+  },
+  {
+    "name": "Stamina Tonic",
+    "slug": "stamina_tonic",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 3
+  },
+  {
+    "name": "Antidote",
+    "slug": "antidote",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 4
+  },
+  {
+    "name": "Elixir",
+    "slug": "elixir",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 5
+  },
+  {
+    "name": "Phoenix Flask",
+    "slug": "phoenix_flask",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 6
+  },
+  {
+    "name": "Swift Draught",
+    "slug": "swift_draught",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 7
+  },
+  {
+    "name": "Iron Skin",
+    "slug": "iron_skin",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 8
+  },
+  {
+    "name": "Night Vision",
+    "slug": "night_vision",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 9
+  },
+  {
+    "name": "Lucky Brew",
+    "slug": "lucky_brew",
+    "theme": "potions_flasks",
+    "row": 5,
+    "column": 10
+  },
+  {
+    "name": "Fire Scroll",
+    "slug": "fire_scroll",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 1
+  },
+  {
+    "name": "Ice Scroll",
+    "slug": "ice_scroll",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 2
+  },
+  {
+    "name": "Wind Scroll",
+    "slug": "wind_scroll",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 3
+  },
+  {
+    "name": "Earth Scroll",
+    "slug": "earth_scroll",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 4
+  },
+  {
+    "name": "Light Tome",
+    "slug": "light_tome",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 5
+  },
+  {
+    "name": "Shadow Tome",
+    "slug": "shadow_tome",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 6
+  },
+  {
+    "name": "Bestiary",
+    "slug": "bestiary",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 7
+  },
+  {
+    "name": "Herbal Codex",
+    "slug": "herbal_codex",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 8
+  },
+  {
+    "name": "Rune Grimoire",
+    "slug": "rune_grimoire",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 9
+  },
+  {
+    "name": "Ancient Spellbook",
+    "slug": "ancient_spellbook",
+    "theme": "scrolls_tomes",
+    "row": 6,
+    "column": 10
+  },
+  {
+    "name": "Gold Ring",
+    "slug": "gold_ring",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 1
+  },
+  {
+    "name": "Silver Ring",
+    "slug": "silver_ring",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 2
+  },
+  {
+    "name": "Ruby Ring",
+    "slug": "ruby_ring",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 3
+  },
+  {
+    "name": "Sapphire Ring",
+    "slug": "sapphire_ring",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 4
+  },
+  {
+    "name": "Emerald Ring",
+    "slug": "emerald_ring",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 5
+  },
+  {
+    "name": "Sun Amulet",
+    "slug": "sun_amulet",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 6
+  },
+  {
+    "name": "Moon Amulet",
+    "slug": "moon_amulet",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 7
+  },
+  {
+    "name": "Charm Bead",
+    "slug": "charm_bead",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 8
+  },
+  {
+    "name": "Lucky Talisman",
+    "slug": "lucky_talisman",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 9
+  },
+  {
+    "name": "Enchanted Brooch",
+    "slug": "enchanted_brooch",
+    "theme": "rings_amulets",
+    "row": 7,
+    "column": 10
+  },
+  {
+    "name": "Leather Cap",
+    "slug": "leather_cap",
+    "theme": "headgear",
+    "row": 8,
+    "column": 1
+  },
+  {
+    "name": "Iron Helm",
+    "slug": "iron_helm",
+    "theme": "headgear",
+    "row": 8,
+    "column": 2
+  },
+  {
+    "name": "Steel Helm",
+    "slug": "steel_helm",
+    "theme": "headgear",
+    "row": 8,
+    "column": 3
+  },
+  {
+    "name": "Winged Helm",
+    "slug": "winged_helm",
+    "theme": "headgear",
+    "row": 8,
+    "column": 4
+  },
+  {
+    "name": "Horned Helm",
+    "slug": "horned_helm",
+    "theme": "headgear",
+    "row": 8,
+    "column": 5
+  },
+  {
+    "name": "Wizard Hat",
+    "slug": "wizard_hat",
+    "theme": "headgear",
+    "row": 8,
+    "column": 6
+  },
+  {
+    "name": "Ranger Hood",
+    "slug": "ranger_hood",
+    "theme": "headgear",
+    "row": 8,
+    "column": 7
+  },
+  {
+    "name": "Royal Crown",
+    "slug": "royal_crown",
+    "theme": "headgear",
+    "row": 8,
+    "column": 8
+  },
+  {
+    "name": "Laurel Crown",
+    "slug": "laurel_crown",
+    "theme": "headgear",
+    "row": 8,
+    "column": 9
+  },
+  {
+    "name": "Battle Circlet",
+    "slug": "battle_circlet",
+    "theme": "headgear",
+    "row": 8,
+    "column": 10
+  },
+  {
+    "name": "Bronze Key",
+    "slug": "bronze_key",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 1
+  },
+  {
+    "name": "Silver Key",
+    "slug": "silver_key",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 2
+  },
+  {
+    "name": "Golden Key",
+    "slug": "golden_key",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 3
+  },
+  {
+    "name": "Ancient Relic",
+    "slug": "ancient_relic",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 4
+  },
+  {
+    "name": "Sacred Idol",
+    "slug": "sacred_idol",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 5
+  },
+  {
+    "name": "Dragon Egg",
+    "slug": "dragon_egg",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 6
+  },
+  {
+    "name": "Guild Seal",
+    "slug": "guild_seal",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 7
+  },
+  {
+    "name": "Treasure Map",
+    "slug": "treasure_map",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 8
+  },
+  {
+    "name": "Quest Letter",
+    "slug": "quest_letter",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 9
+  },
+  {
+    "name": "Moon Relic",
+    "slug": "moon_relic",
+    "theme": "keys_relics",
+    "row": 9,
+    "column": 10
+  },
+  {
+    "name": "Ruby Gem",
+    "slug": "ruby_gem",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 1
+  },
+  {
+    "name": "Sapphire Gem",
+    "slug": "sapphire_gem",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 2
+  },
+  {
+    "name": "Emerald Gem",
+    "slug": "emerald_gem",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 3
+  },
+  {
+    "name": "Topaz Gem",
+    "slug": "topaz_gem",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 4
+  },
+  {
+    "name": "Amethyst Gem",
+    "slug": "amethyst_gem",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 5
+  },
+  {
+    "name": "Fire Rune",
+    "slug": "fire_rune",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 6
+  },
+  {
+    "name": "Water Rune",
+    "slug": "water_rune",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 7
+  },
+  {
+    "name": "Earth Rune",
+    "slug": "earth_rune",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 8
+  },
+  {
+    "name": "Air Rune",
+    "slug": "air_rune",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 9
+  },
+  {
+    "name": "Mythril Ore",
+    "slug": "mythril_ore",
+    "theme": "gems_runes",
+    "row": 10,
+    "column": 10
+  }
+]

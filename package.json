@@ -1,0 +1,29 @@
+{
+  "name": "fernhold",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "cap:init": "cap init Fernhold com.fernhold.game --web-dir dist",
+    "assets:generate": "py scripts/generate_pixel_icons.py",
+    "assets:import:elv": "py scripts/import_elv_building_icons.py"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.1",
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^8.0.10"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.3.1",
+    "phaser": "^4.1.0"
+  }
+}

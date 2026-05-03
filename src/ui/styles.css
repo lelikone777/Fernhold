@@ -1,0 +1,357 @@
+:root {
+  --panel-bg: rgba(25, 34, 23, 0.84);
+  --panel-border: rgba(214, 198, 157, 0.6);
+  --text-main: #f3eed8;
+  --text-dim: #d7d0b5;
+  --btn-bg: #3f4f38;
+  --btn-bg-hover: #53684a;
+  --btn-selected: #8c6d43;
+  --btn-border: #d8c89c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app,
+#game-shell {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  background: #243322;
+  color: var(--text-main);
+  cursor: default;
+}
+
+#game-shell {
+  position: relative;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(124, 171, 95, 0.22), transparent 24%),
+    radial-gradient(circle at 75% 35%, rgba(90, 130, 70, 0.18), transparent 28%),
+    linear-gradient(180deg, #2f4728 0%, #243322 100%);
+}
+
+#game-root {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(100vw, 100vh);
+  height: min(100vw, 100vh);
+  transform: translate(-50%, -50%);
+}
+
+#game-root canvas {
+  display: block;
+}
+
+#hud-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.panel {
+  pointer-events: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(44, 57, 38, 0.88), var(--panel-bg));
+  backdrop-filter: blur(3px);
+}
+
+.hud-top {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  min-height: 48px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.resource-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 16px;
+}
+
+.resource-list-secondary {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.resource-list strong {
+  color: #fef8de;
+}
+
+.dev-paint {
+  position: absolute;
+  left: 10px;
+  top: 72px;
+  width: 248px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.dev-paint.is-active {
+  border-color: #ffe8b0;
+}
+
+.dev-paint-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.dev-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.dev-tab {
+  border: 1px solid rgba(237, 222, 187, 0.35);
+  border-radius: 8px;
+  background: rgba(18, 24, 16, 0.82);
+  color: var(--text-main);
+  padding: 7px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dev-tab.is-active {
+  border-color: #ffe8b0;
+  background: rgba(107, 82, 48, 0.92);
+}
+
+.dev-panel {
+  display: none;
+}
+
+.dev-panel.is-active {
+  display: block;
+}
+
+.dev-paint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.dev-paint-section {
+  display: grid;
+  gap: 6px;
+}
+
+.dev-paint-section-title {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d7d0b5;
+}
+
+.dev-paint-tile {
+  border: 1px solid rgba(237, 222, 187, 0.4);
+  border-radius: 8px;
+  background: rgba(18, 24, 16, 0.88);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  cursor: pointer;
+}
+
+.dev-paint-tile:disabled {
+  cursor: not-allowed;
+}
+
+.dev-paint-tile.is-selected,
+.dev-erase.is-selected {
+  border-color: #ffe8b0;
+  background: rgba(107, 82, 48, 0.92);
+}
+
+.dev-paint-swatch {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+  background-size: auto;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.dev-foliage-grid {
+  max-height: 164px;
+}
+
+.dev-foliage-tile {
+  align-items: flex-start;
+}
+
+.dev-building-tile {
+  align-items: center;
+}
+
+.dev-buildings-groups {
+  display: grid;
+  gap: 6px;
+  max-height: 250px;
+  overflow: auto;
+}
+
+.building-group {
+  display: grid;
+  gap: 4px;
+}
+
+.building-group-head {
+  justify-content: flex-start;
+}
+
+.building-level-list {
+  display: none;
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.building-level-list.is-open {
+  display: grid;
+}
+
+.dev-building-tile.is-locked {
+  opacity: 0.58;
+  border-color: rgba(210, 146, 120, 0.42);
+}
+
+.dev-building-tile.is-locked .build-icon {
+  filter: saturate(0.45) brightness(0.82);
+}
+
+.dev-foliage-swatch {
+  background-position: center;
+  background-size: contain;
+}
+
+.dev-paint-label {
+  font-size: 12px;
+  text-align: left;
+}
+
+.dev-paint-label strong,
+.dev-paint-label small {
+  display: block;
+}
+
+.dev-paint-label small {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.dev-lock-reason {
+  color: #f1c09d;
+  min-height: 22px;
+}
+
+.dev-empty-state {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px dashed rgba(237, 222, 187, 0.28);
+  border-radius: 8px;
+  background: rgba(18, 24, 16, 0.55);
+}
+
+.dev-empty-state span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.dev-panel-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.hud-button {
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.build-icon {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  margin-bottom: 2px;
+}
+
+.hud-button:hover {
+  background: var(--btn-bg-hover);
+}
+
+.hud-button {
+  min-height: 42px;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
+.hud-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) translateY(14px);
+  top: 76px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  border: 1px solid rgba(243, 220, 173, 0.8);
+  border-radius: 999px;
+  background: rgba(67, 34, 24, 0.9);
+  color: #ffe7c5;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hud-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 960px) {
+  .dev-paint {
+    width: 262px;
+    max-height: calc(100vh - 92px);
+    overflow: auto;
+  }
+
+  .hud-button {
+    min-height: 48px;
+    font-size: 12px;
+  }
+}
