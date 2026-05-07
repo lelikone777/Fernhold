@@ -13,6 +13,7 @@ import { InputSystem } from '../systems/InputSystem';
 import { ProgressionSystem } from '../systems/ProgressionSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { SaveSystem } from '../systems/SaveSystem';
+import { VillagerSystem } from '../systems/VillagerSystem';
 import type {
   BuildPlacementError,
   BuildingAvailability,
@@ -57,6 +58,7 @@ export class WorldScene extends Phaser.Scene {
   private buildingAvailability!: Record<BuildingType, BuildingAvailability>;
   private cameraSystem!: CameraSystem;
   private inputSystem!: InputSystem;
+  private villagerSystem!: VillagerSystem;
   private preview!: Phaser.GameObjects.Graphics;
   private readonly roadSprites = new Map<string, Phaser.GameObjects.Container>();
   private readonly roads = new Map<string, PlacedRoad>();
@@ -121,6 +123,16 @@ export class WorldScene extends Phaser.Scene {
     this.preview = this.add.graphics();
     this.renderAllBuildings();
 
+    this.villagerSystem = new VillagerSystem({
+      scene: this,
+      tileSize: this.tileSize,
+      mapWidth: this.mapWidth,
+      mapHeight: this.mapHeight,
+      isTileBlocked: (x, y) => this.buildingSystem.isTileOccupied(x, y),
+      getBuildings: () => this.buildingSystem.getBuildings(),
+    });
+    this.villagerSystem.syncPopulation(this.village.population);
+
     const worldPixelsWidth = this.mapWidth * this.tileSize;
     const worldPixelsHeight = this.mapHeight * this.tileSize;
 
@@ -180,6 +192,7 @@ export class WorldScene extends Phaser.Scene {
 
   public update(_time: number, delta: number): void {
     this.cameraSystem.update(delta);
+    this.villagerSystem?.update(delta);
     this.autosaveElapsedMs += delta;
     this.dayElapsedMs += delta;
 
@@ -431,6 +444,7 @@ export class WorldScene extends Phaser.Scene {
       this.buildingViews.delete(removed.building.id);
       this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
       this.refreshBuildingAvailability();
+      this.villagerSystem?.reassignJobs();
       this.game.events.emit(EVENT_KEYS.villageChanged, this.village);
       this.game.events.emit(EVENT_KEYS.buildingAvailabilityChanged, this.buildingAvailability);
       this.persistState();
@@ -499,6 +513,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
     this.refreshBuildingAvailability();
+    this.villagerSystem?.reassignJobs();
     this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
     this.game.events.emit(EVENT_KEYS.villageChanged, this.village);
     this.game.events.emit(EVENT_KEYS.buildingAvailabilityChanged, this.buildingAvailability);
@@ -569,6 +584,7 @@ export class WorldScene extends Phaser.Scene {
     this.buildingSystem.load(starterBuildings);
     this.clearRoadLayer();
     this.clearFoliageLayer();
+    this.villagerSystem?.clear();
     this.resourceSystem.setResources(INITIAL_RESOURCES);
     this.village = this.economySystem.syncVillage(starterBuildings, { ...INITIAL_VILLAGE });
     this.day = 1;
@@ -577,6 +593,7 @@ export class WorldScene extends Phaser.Scene {
     this.clearSelection();
 
     this.renderAllBuildings();
+    this.villagerSystem?.syncPopulation(this.village.population);
 
     const camera = this.cameras.main;
     camera.setZoom(CAMERA.defaultZoom);
@@ -981,6 +998,7 @@ export class WorldScene extends Phaser.Scene {
     this.resourceSystem.setResources(result.resources);
     this.village = result.village;
     this.refreshBuildingAvailability();
+    this.villagerSystem?.syncPopulation(this.village.population);
     this.emitFullState();
     this.persistState();
     this.emitDayReport(result.report);
