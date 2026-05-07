@@ -75,6 +75,10 @@ export class BuildingSystem {
     return { ok: true, building: placed };
   }
 
+  public isTileOccupied(x: number, y: number): boolean {
+    return this.occupiedTiles.has(this.toKey(x, y));
+  }
+
   public getBuildingAt(x: number, y: number): PlacedBuilding | null {
     for (const building of this.buildings) {
       const definition = this.getDefinition(building.type);

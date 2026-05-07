@@ -1,4 +1,23 @@
 export type ResourceType = 'wood' | 'stone' | 'food' | 'tools' | 'weapons';
+
+export type VillagerState = 'idle' | 'walking' | 'working' | 'going_home' | 'going_to_work';
+export type VillagerDirection = 'down' | 'up' | 'left' | 'right';
+
+export interface VillagerPalette {
+  skin: number;
+  hair: number;
+  shirt: number;
+  pants: number;
+}
+
+export interface PlacedVillager {
+  id: string;
+  homeBuildingId: string | null;
+  workBuildingId: string | null;
+  paletteKey: string;
+  spawnTileX: number;
+  spawnTileY: number;
+}
 export type BuildingType =
   | 'house_level_1'
   | 'house_level_2'

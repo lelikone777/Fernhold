@@ -2,6 +2,15 @@ import Phaser from 'phaser';
 import { ITEM_SPRITESHEET } from '../constants';
 import { BUILDING_LIST } from '../data/buildings';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
+import {
+  VILLAGER_FRAME_COUNT,
+  VILLAGER_PALETTES,
+  VILLAGER_SPRITE_HEIGHT,
+  VILLAGER_SPRITE_KEY_PREFIX,
+  VILLAGER_SPRITE_WIDTH,
+  VILLAGER_WALK_FPS,
+} from '../data/villagers';
+import { createVillagerSpritesheetCanvas } from '../utils/villagerSprite';
 
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -51,8 +60,71 @@ export class PreloadScene extends Phaser.Scene {
     this.createRoadRuntimeSheets();
     this.createGrassPlaceholderTexture();
     this.createFoliagePlaceholderTextures();
+    this.createVillagerSpritesheets();
     this.scene.start('WorldScene');
     this.scene.launch('UIScene');
+  }
+
+  private createVillagerSpritesheets(): void {
+    const addSpriteSheet = (
+      this.textures as unknown as {
+        addSpriteSheet: (
+          key: string,
+          source: HTMLCanvasElement,
+          config: { frameWidth: number; frameHeight: number },
+        ) => unknown;
+      }
+    ).addSpriteSheet.bind(this.textures);
+
+    for (let index = 0; index < VILLAGER_PALETTES.length; index += 1) {
+      const palette = VILLAGER_PALETTES[index];
+      const key = `${VILLAGER_SPRITE_KEY_PREFIX}${index}`;
+      if (!this.textures.exists(key)) {
+        const canvas = createVillagerSpritesheetCanvas(palette);
+        addSpriteSheet(key, canvas, {
+          frameWidth: VILLAGER_SPRITE_WIDTH,
+          frameHeight: VILLAGER_SPRITE_HEIGHT,
+        });
+      }
+
+      const walkKeys = {
+        down: `${key}_walk_down`,
+        up: `${key}_walk_up`,
+        left: `${key}_walk_left`,
+        right: `${key}_walk_right`,
+      };
+      const idleKeys = {
+        down: `${key}_idle_down`,
+        up: `${key}_idle_up`,
+        left: `${key}_idle_left`,
+        right: `${key}_idle_right`,
+      };
+
+      const ensureAnim = (animKey: string, frames: number[], frameRate: number, repeat: number): void => {
+        if (this.anims.exists(animKey)) {
+          return;
+        }
+        this.anims.create({
+          key: animKey,
+          frames: frames.map((frame) => ({ key, frame })),
+          frameRate,
+          repeat,
+        });
+      };
+
+      ensureAnim(walkKeys.down, [0, 1], VILLAGER_WALK_FPS, -1);
+      ensureAnim(walkKeys.up, [2, 3], VILLAGER_WALK_FPS, -1);
+      ensureAnim(walkKeys.left, [4, 5], VILLAGER_WALK_FPS, -1);
+      ensureAnim(walkKeys.right, [6, 7], VILLAGER_WALK_FPS, -1);
+      ensureAnim(idleKeys.down, [0], 1, 0);
+      ensureAnim(idleKeys.up, [2], 1, 0);
+      ensureAnim(idleKeys.left, [4], 1, 0);
+      ensureAnim(idleKeys.right, [6], 1, 0);
+    }
+
+    if (VILLAGER_FRAME_COUNT !== 8) {
+      console.warn('Villager sprite frame count mismatch.');
+    }
   }
 
   private stripBuildingBackdrops(): void {
