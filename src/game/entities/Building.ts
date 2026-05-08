@@ -14,6 +14,35 @@ const PRODUCTION_TYPES = new Set([
   'mason_yard',
 ]);
 
+const LIT_AT_NIGHT_TYPES = new Set([
+  'house_level_1',
+  'house_level_2',
+  'house_level_3',
+  'house_level_4',
+  'house_level_5',
+  'farmhouse',
+  'tavern_level_1',
+  'tavern_level_2',
+  'tavern_level_3',
+  'town_hall',
+  'bakery',
+  'blacksmith_level_1',
+  'blacksmith_level_2',
+  'blacksmith_level_3',
+  'shrine',
+  'watchtower',
+]);
+
+export interface BuildingViewMeta {
+  light?: Phaser.GameObjects.Ellipse;
+}
+
+const VIEW_META = new WeakMap<Phaser.GameObjects.Container, BuildingViewMeta>();
+
+export const getBuildingViewMeta = (
+  view: Phaser.GameObjects.Container,
+): BuildingViewMeta | undefined => VIEW_META.get(view);
+
 export const createBuildingView = (
   scene: Phaser.Scene,
   placed: PlacedBuilding,
@@ -59,7 +88,23 @@ export const createBuildingView = (
     children.push(smoke);
   }
 
+  const meta: BuildingViewMeta = {};
+  if (LIT_AT_NIGHT_TYPES.has(definition.type)) {
+    const lightColor = definition.type.startsWith('blacksmith')
+      ? 0xff7a3a
+      : definition.type === 'shrine'
+        ? 0xc9b8ff
+        : 0xffd089;
+    const light = scene.add.ellipse(width * 0.5, height * 0.55, width * 1.4, height * 1.1, lightColor, 0);
+    light.setBlendMode(Phaser.BlendModes.ADD);
+    children.unshift(light);
+    meta.light = light;
+  }
+
   const container = scene.add.container(worldPos.x, worldPos.y, children).setDepth(0.6);
+  if (meta.light) {
+    VIEW_META.set(container, meta);
+  }
   return container;
 };
 

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { DevPaintStateController } from '../controllers/DevPaintStateController';
 import { WorldPersistenceController } from '../controllers/WorldPersistenceController';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
-import { createBuildingView, playDemolishTween } from '../entities/Building';
+import { createBuildingView, getBuildingViewMeta, playDemolishTween } from '../entities/Building';
 import { CAMERA, DAY_DURATION_MS, EVENT_KEYS } from '../constants';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 import { MAP_CONFIG } from '../data/map';
@@ -643,6 +643,14 @@ export class WorldScene extends Phaser.Scene {
     const tint = computeDayNightTint(t);
     this.dayNightOverlay.fillColor = tint.color;
     this.dayNightOverlay.fillAlpha = tint.alpha;
+
+    const lightAlpha = Math.min(0.9, tint.alpha * 1.7);
+    for (const view of this.buildingViews.values()) {
+      const meta = getBuildingViewMeta(view);
+      if (meta?.light) {
+        meta.light.setFillStyle(meta.light.fillColor, lightAlpha);
+      }
+    }
   }
 
   private refreshBuildingAvailability(): void {

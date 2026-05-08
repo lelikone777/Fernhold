@@ -82,6 +82,26 @@ export class FoliagePaintSystem {
       .setOrigin(0.5, 1);
     sprite.setDepth(0.75);
     this.foliageSprites.set(key, sprite);
+    this.attachSway(sprite, foliage.x, foliage.y);
+  }
+
+  private attachSway(
+    sprite: Phaser.GameObjects.Image,
+    gridX: number,
+    gridY: number,
+  ): void {
+    const seed = (gridX * 73856093) ^ (gridY * 19349663);
+    const phase = Math.abs(seed % 1500);
+    const duration = 1700 + (Math.abs(seed) % 800);
+    this.scene.tweens.add({
+      targets: sprite,
+      angle: { from: -1.4, to: 1.4 },
+      duration,
+      delay: phase,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   private toGridKey(x: number, y: number): string {
