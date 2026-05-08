@@ -1,3 +1,4 @@
+import { BUILDING_DEFINITIONS } from '../data/buildings';
 import type { BuildingType, DayReport, PlacedBuilding, Resources, VillageState } from '../types/game';
 
 interface DayResult {
@@ -23,13 +24,6 @@ const addResource = (store: Partial<Resources>, key: keyof Resources, value: num
   store[key] = (store[key] ?? 0) + value;
 };
 
-const sum3 = (
-  counts: Partial<Record<BuildingType, number>>,
-  a: BuildingType,
-  b: BuildingType,
-  c: BuildingType,
-): number => (counts[a] ?? 0) + (counts[b] ?? 0) + (counts[c] ?? 0);
-
 const sum5 = (
   counts: Partial<Record<BuildingType, number>>,
   a: BuildingType,
@@ -53,12 +47,14 @@ const computeHousing = (counts: Partial<Record<BuildingType, number>>): number =
   (counts.house_level_5 ?? 0) * 10 +
   (counts.farmhouse ?? 0) * 1 +
   (counts.town_hall ?? 0) * 2 +
-  (sum3(counts, 'tavern_level_1', 'tavern_level_2', 'tavern_level_3')) * 1;
+  (counts.tavern_level_1 ?? 0) * 1 +
+  (counts.tavern_level_2 ?? 0) * 1 +
+  (counts.tavern_level_3 ?? 0) * 1;
 
 const computeNeeds = (population: number): Pick<VillageState, 'foodNeed' | 'toolsNeed' | 'weaponsNeed'> => ({
   foodNeed: population * 2,
   toolsNeed: Math.max(1, Math.ceil(population / 3)),
-  weaponsNeed: Math.max(1, Math.ceil(population / 4)),
+  weaponsNeed: population > 4 ? Math.ceil(population / 4) : 0,
 });
 
 export class EconomySystem {
@@ -75,7 +71,13 @@ export class EconomySystem {
     };
   }
 
-  public processDay(day: number, resources: Resources, buildings: PlacedBuilding[], village: VillageState): DayResult {
+  public processDay(
+    day: number,
+    resources: Resources,
+    buildings: PlacedBuilding[],
+    village: VillageState,
+    workerCounts: ReadonlyMap<string, number>,
+  ): DayResult {
     const nextResources = cloneResources(resources);
     const produced: Partial<Resources> = {};
     const consumed: Partial<Resources> = {};
@@ -83,17 +85,6 @@ export class EconomySystem {
     const counts = countBuildings(buildings);
     const housing = computeHousing(counts);
     const needsBefore = computeNeeds(village.population);
-    const lumberMillCount = sum3(counts, 'lumber_mill_level_1', 'lumber_mill_level_2', 'lumber_mill_level_3');
-    const barnCount = sum5(
-      counts,
-      'barn_level_1',
-      'barn_level_2',
-      'barn_level_3',
-      'barn_level_4',
-      'barn_level_5',
-    );
-    const blacksmithCount = sum3(counts, 'blacksmith_level_1', 'blacksmith_level_2', 'blacksmith_level_3');
-    const tavernCount = sum3(counts, 'tavern_level_1', 'tavern_level_2', 'tavern_level_3');
 
     const toolPenalty = nextResources.tools < needsBefore.toolsNeed ? 0.75 : 1;
     const weaponPenalty = nextResources.weapons < needsBefore.weaponsNeed ? 0.9 : 1;
@@ -109,49 +100,75 @@ export class EconomySystem {
       addResource(consumed, key, value);
     };
 
-    addProduced('wood', Math.floor(lumberMillCount * 6 * productivity));
-    addProduced('stone', Math.floor((counts.mason_yard ?? 0) * 5 * productivity));
-    addProduced('food', Math.floor((counts.farmhouse ?? 0) * 4 * productivity));
-    addProduced('food', Math.floor((counts.fisher_hut ?? 0) * 3 * productivity));
-    addProduced('food', Math.floor((counts.herb_hut ?? 0) * 2 * productivity));
+    let totalWorkerSlots = 0;
+    let totalAssigned = 0;
 
+    for (const building of buildings) {
+      const def = BUILDING_DEFINITIONS[building.type];
+      const prod = def.production;
+      if (!prod) continue;
+
+      const slots = prod.workerSlots;
+      if (slots <= 0) {
+        if (prod.moraleBonus) {
+          village.morale += prod.moraleBonus;
+        }
+        continue;
+      }
+
+      totalWorkerSlots += slots;
+      const assigned = workerCounts.get(building.id) ?? 0;
+      totalAssigned += Math.min(assigned, slots);
+      const staffRatio = Math.min(assigned / slots, 1);
+
+      if (staffRatio <= 0) continue;
+
+      if (prod.consumes) {
+        let canProduce = true;
+        for (const [res, amount] of Object.entries(prod.consumes) as [keyof Resources, number][]) {
+          if (nextResources[res] < amount) {
+            canProduce = false;
+            break;
+          }
+        }
+        if (!canProduce) continue;
+
+        for (const [res, amount] of Object.entries(prod.consumes) as [keyof Resources, number][]) {
+          addConsumed(res, amount);
+        }
+      }
+
+      if (prod.produces) {
+        for (const [res, baseAmount] of Object.entries(prod.produces) as [keyof Resources, number][]) {
+          const amount = Math.floor(baseAmount * staffRatio * productivity);
+          if (amount > 0) addProduced(res, amount);
+        }
+      }
+
+      if (prod.moraleBonus && staffRatio > 0) {
+        village.morale += Math.floor(prod.moraleBonus * staffRatio);
+      }
+    }
+
+    const idleVillagers = Math.max(0, village.population - totalAssigned);
+    if (idleVillagers > 0) {
+      addProduced('wood', idleVillagers);
+      addProduced('stone', idleVillagers);
+      addProduced('food', idleVillagers);
+      notes.push(`${idleVillagers} idle ${idleVillagers === 1 ? 'villager gathers' : 'villagers gather'} resources.`);
+    }
+
+    const barnCount = sum5(counts, 'barn_level_1', 'barn_level_2', 'barn_level_3', 'barn_level_4', 'barn_level_5');
     const barnBoost = Math.min(barnCount, counts.farmhouse ?? 0) * 2;
     if (barnBoost > 0) {
       addProduced('food', barnBoost);
       notes.push('Barn storage reduced spoilage.');
     }
 
-    const bakeryCount = counts.bakery ?? 0;
-    for (let index = 0; index < bakeryCount; index += 1) {
-      if (nextResources.food >= 2 && nextResources.wood >= 1) {
-        addConsumed('food', 2);
-        addConsumed('wood', 1);
-        addProduced('food', 4);
-      }
+    if (totalWorkerSlots > 0 && totalAssigned < totalWorkerSlots) {
+      const shortage = totalWorkerSlots - totalAssigned;
+      notes.push(`Worker shortage: ${shortage} unfilled ${shortage === 1 ? 'slot' : 'slots'}.`);
     }
-
-    const workshopCount = counts.workshop ?? 0;
-    for (let index = 0; index < workshopCount; index += 1) {
-      if (nextResources.wood >= 2 && nextResources.stone >= 1) {
-        addConsumed('wood', 2);
-        addConsumed('stone', 1);
-        addProduced('tools', 1);
-      }
-    }
-
-    for (let index = 0; index < blacksmithCount; index += 1) {
-      if (nextResources.wood >= 1 && nextResources.stone >= 2 && nextResources.tools >= 1) {
-        addConsumed('wood', 1);
-        addConsumed('stone', 2);
-        addProduced('weapons', 1);
-      }
-    }
-
-    const moraleBonus =
-      (counts.well ?? 0) +
-      tavernCount * 2 +
-      (counts.shrine ?? 0) +
-      (counts.market_stall ?? 0);
 
     if (nextResources.food >= needsBefore.foodNeed) {
       addConsumed('food', needsBefore.foodNeed);
@@ -182,7 +199,6 @@ export class EconomySystem {
       notes.push('Not enough housing for current population.');
     }
 
-    village.morale += moraleBonus;
     village.morale = Math.max(0, Math.min(100, village.morale));
 
     let nextPopulation = village.population;

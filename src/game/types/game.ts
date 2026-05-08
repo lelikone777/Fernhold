@@ -56,7 +56,7 @@ export type BuildingType =
   | 'mason_yard'
   | 'stable';
 export type BuildPlacementError = 'not_enough_resources' | 'tile_occupied' | 'cannot_build_here';
-export type RoadType = 'dirt_path' | 'stone_path' | 'cobble_path';
+export type RoadType = 'dirt_path' | 'stone_path' | 'cobble_path' | 'country_path';
 
 export interface DevFoliageDefinition {
   id: string;
@@ -122,6 +122,13 @@ export interface BuildingSize {
   h: number;
 }
 
+export interface BuildingProduction {
+  workerSlots: number;
+  produces?: Partial<Resources>;
+  consumes?: Partial<Resources>;
+  moraleBonus?: number;
+}
+
 export interface BuildingDefinition {
   type: BuildingType;
   name: string;
@@ -131,6 +138,7 @@ export interface BuildingDefinition {
   color: number;
   spritePath: string;
   unlock?: BuildingUnlockRule;
+  production?: BuildingProduction;
 }
 
 export interface BuildingUnlockRule {
@@ -144,6 +152,32 @@ export interface BuildingUnlockRule {
 export interface BuildingAvailability {
   unlocked: boolean;
   reason: string | null;
+}
+
+export type BuildingRuntimeStatus = 'open' | 'closed' | 'blocked';
+
+export interface BuildingResourceFlow {
+  resource: ResourceType;
+  amount: number;
+  available?: number;
+}
+
+export interface BuildingDetailsPayload {
+  id: string;
+  type: BuildingType;
+  name: string;
+  level: number;
+  purpose: string;
+  status: BuildingRuntimeStatus;
+  statusLabel: string;
+  workersAssigned: number;
+  workerSlots: number;
+  efficiency: number;
+  size: BuildingSize;
+  position: { x: number; y: number };
+  produces: BuildingResourceFlow[];
+  consumes: BuildingResourceFlow[];
+  moraleBonus: number;
 }
 
 export interface PlacedBuilding {

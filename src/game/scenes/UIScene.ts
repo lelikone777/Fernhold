@@ -4,7 +4,13 @@ import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
 import { DEV_ROAD_ITEMS } from '../data/devRoads';
 import { EVENT_KEYS } from '../constants';
 import { createHud, type HudController } from '../../ui/hud';
-import type { BuildingAvailability, BuildingType, Resources, VillageState } from '../types/game';
+import type {
+  BuildingAvailability,
+  BuildingDetailsPayload,
+  BuildingType,
+  Resources,
+  VillageState,
+} from '../types/game';
 import { generateTerrainPreviewItems } from '../utils/terrainTextures';
 import { WorldScene } from './WorldScene';
 
@@ -20,12 +26,14 @@ export class UIScene extends Phaser.Scene {
     if (!root) {
       throw new Error('Missing #hud-root container');
     }
+    const buildingIconMap = this.buildBuildingIconMap();
 
     this.hud = createHud(root, {
       buildingOptions: BUILDING_LIST,
       devFoliageItems: DEV_FOLIAGE_ITEMS,
       devRoadItems: DEV_ROAD_ITEMS,
       terrainPreviewItems: generateTerrainPreviewItems(),
+      resolveBuildingIcon: (building) => buildingIconMap.get(building.type) ?? null,
       onSelectBuilding: (type) => {
         this.game.events.emit(EVENT_KEYS.requestSelectBuilding, type);
       },
@@ -47,6 +55,9 @@ export class UIScene extends Phaser.Scene {
       onEraseDevPaintTile: () => {
         this.game.events.emit(EVENT_KEYS.requestEraseDevPaintTile);
       },
+      onCloseBuildingDetails: () => {
+        this.game.events.emit(EVENT_KEYS.requestCloseBuildingDetails);
+      },
     });
 
     this.game.events.on(EVENT_KEYS.resourcesChanged, this.handleResources, this);
@@ -56,6 +67,8 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on(EVENT_KEYS.dayChanged, this.handleDay, this);
     this.game.events.on(EVENT_KEYS.devPaintStateChanged, this.handleDevPaintState, this);
     this.game.events.on(EVENT_KEYS.toast, this.handleToast, this);
+    this.game.events.on(EVENT_KEYS.workerInfoChanged, this.handleWorkerInfo, this);
+    this.game.events.on(EVENT_KEYS.buildingDetailsChanged, this.handleBuildingDetails, this);
 
     const world = this.scene.get('WorldScene') as WorldScene | undefined;
     if (world) {
@@ -70,6 +83,8 @@ export class UIScene extends Phaser.Scene {
         snapshot.selectedFoliageId,
         snapshot.selectedRoadId,
       );
+      this.handleWorkerInfo(snapshot.workersAssigned, snapshot.workerSlots);
+      this.handleBuildingDetails(snapshot.buildingDetails);
     }
 
     this.events.once('shutdown', () => {
@@ -80,6 +95,8 @@ export class UIScene extends Phaser.Scene {
       this.game.events.off(EVENT_KEYS.dayChanged, this.handleDay, this);
       this.game.events.off(EVENT_KEYS.devPaintStateChanged, this.handleDevPaintState, this);
       this.game.events.off(EVENT_KEYS.toast, this.handleToast, this);
+      this.game.events.off(EVENT_KEYS.workerInfoChanged, this.handleWorkerInfo, this);
+      this.game.events.off(EVENT_KEYS.buildingDetailsChanged, this.handleBuildingDetails, this);
       this.hud?.destroy();
     });
   }
@@ -114,5 +131,52 @@ export class UIScene extends Phaser.Scene {
 
   private handleToast(message: string): void {
     this.hud?.showMessage(message);
+  }
+
+  private handleWorkerInfo(assigned: number, totalSlots: number): void {
+    this.hud?.setWorkerInfo(assigned, totalSlots);
+  }
+
+  private handleBuildingDetails(payload: BuildingDetailsPayload | null): void {
+    this.hud?.setBuildingDetails(payload);
+  }
+
+  private buildBuildingIconMap(): Map<BuildingType, string> {
+    const map = new Map<BuildingType, string>();
+    for (const building of BUILDING_LIST) {
+      const textureKey = `building_sprite_${building.type}`;
+      const texture = this.textures.get(textureKey);
+      if (!texture) {
+        continue;
+      }
+      const source = texture.getSourceImage() as CanvasImageSource & {
+        width?: number;
+        height?: number;
+        toDataURL?: (type?: string) => string;
+      };
+      if (!source) {
+        continue;
+      }
+      if (typeof source.toDataURL === 'function') {
+        map.set(building.type, source.toDataURL('image/png'));
+        continue;
+      }
+      const width = source.width ?? 0;
+      const height = source.height ?? 0;
+      if (!width || !height) {
+        continue;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        continue;
+      }
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(source, 0, 0, width, height);
+      map.set(building.type, canvas.toDataURL('image/png'));
+    }
+    return map;
   }
 }

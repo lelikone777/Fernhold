@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 import {
+  getWorkPriority,
   HOUSE_BUILDING_TYPES,
   HOUSE_CAPACITY,
   VILLAGER_PALETTES,
@@ -49,6 +50,7 @@ export class VillagerSystem {
   private readonly villagers = new Map<string, Villager>();
   private nextId = 1;
   private homeAssignments = new Map<string, number>();
+  private workAssignments = new Map<string, number>();
 
   constructor(options: VillagerSystemOptions) {
     this.scene = options.scene;
@@ -82,6 +84,8 @@ export class VillagerSystem {
     const workMap = new Map(works.map((b) => [b.id, b]));
 
     this.homeAssignments.clear();
+    this.workAssignments.clear();
+
     for (const villager of this.villagers.values()) {
       if (villager.homeBuildingId && !homeMap.has(villager.homeBuildingId)) {
         villager.homeBuildingId = null;
@@ -98,7 +102,17 @@ export class VillagerSystem {
           (this.homeAssignments.get(villager.homeBuildingId) ?? 0) + 1,
         );
       }
+      if (villager.workBuildingId) {
+        this.workAssignments.set(
+          villager.workBuildingId,
+          (this.workAssignments.get(villager.workBuildingId) ?? 0) + 1,
+        );
+      }
     }
+
+    const sortedWorks = [...works].sort(
+      (a, b) => getWorkPriority(a.type) - getWorkPriority(b.type),
+    );
 
     for (const villager of this.villagers.values()) {
       if (!villager.homeBuildingId) {
@@ -108,11 +122,18 @@ export class VillagerSystem {
           this.homeAssignments.set(home.id, (this.homeAssignments.get(home.id) ?? 0) + 1);
         }
       }
-      if (!villager.workBuildingId && works.length > 0) {
-        const work = works[Math.floor(Math.random() * works.length)];
-        villager.workBuildingId = work.id;
+      if (!villager.workBuildingId) {
+        const work = this.findFreeWorkplace(sortedWorks);
+        if (work) {
+          villager.workBuildingId = work.id;
+          this.workAssignments.set(work.id, (this.workAssignments.get(work.id) ?? 0) + 1);
+        }
       }
     }
+  }
+
+  public getWorkerCounts(): ReadonlyMap<string, number> {
+    return this.workAssignments;
   }
 
   public update(deltaMs: number): void {
@@ -127,6 +148,7 @@ export class VillagerSystem {
     }
     this.villagers.clear();
     this.homeAssignments.clear();
+    this.workAssignments.clear();
     this.nextId = 1;
   }
 
@@ -415,6 +437,19 @@ export class VillagerSystem {
       }
     }
     return homes[0] ?? null;
+  }
+
+  private findFreeWorkplace(sortedWorks: PlacedBuilding[]): PlacedBuilding | null {
+    for (const work of sortedWorks) {
+      const def = BUILDING_DEFINITIONS[work.type];
+      const slots = def.production?.workerSlots ?? 0;
+      if (slots <= 0) continue;
+      const assigned = this.workAssignments.get(work.id) ?? 0;
+      if (assigned < slots) {
+        return work;
+      }
+    }
+    return null;
   }
 
   private findSpawnTile(): { x: number; y: number } {

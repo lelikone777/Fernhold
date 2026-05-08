@@ -112,6 +112,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x5b7449,
     spritePath: spritePath('lumber_mill_level_1'),
     unlock: { requiresBuildings: { storage_level_1: 1 } },
+    production: { workerSlots: 2, produces: { wood: 6 } },
   },
   lumber_mill_level_2: {
     type: 'lumber_mill_level_2',
@@ -122,6 +123,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x567044,
     spritePath: spritePath('lumber_mill_level_2'),
     unlock: { minDay: 4, requiresBuildings: { lumber_mill_level_1: 1, workshop: 1 } },
+    production: { workerSlots: 3, produces: { wood: 10 } },
   },
   lumber_mill_level_3: {
     type: 'lumber_mill_level_3',
@@ -132,6 +134,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x4d663d,
     spritePath: spritePath('lumber_mill_level_3'),
     unlock: { minDay: 7, requiresBuildings: { lumber_mill_level_2: 1, blacksmith_level_1: 1 } },
+    production: { workerSlots: 4, produces: { wood: 15 } },
   },
   barn_level_1: {
     type: 'barn_level_1',
@@ -192,6 +195,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x5a5a61,
     spritePath: spritePath('blacksmith_level_1'),
     unlock: { minDay: 5, requiresBuildings: { workshop: 1, mason_yard: 1 } },
+    production: { workerSlots: 2, produces: { weapons: 1 }, consumes: { wood: 1, stone: 2, tools: 1 } },
   },
   blacksmith_level_2: {
     type: 'blacksmith_level_2',
@@ -202,6 +206,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x56565d,
     spritePath: spritePath('blacksmith_level_2'),
     unlock: { minDay: 7, requiresBuildings: { blacksmith_level_1: 1, storage_level_2: 1 } },
+    production: { workerSlots: 3, produces: { weapons: 2 }, consumes: { wood: 2, stone: 3, tools: 1 } },
   },
   blacksmith_level_3: {
     type: 'blacksmith_level_3',
@@ -212,6 +217,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x4e4e55,
     spritePath: spritePath('blacksmith_level_3'),
     unlock: { minDay: 9, requiresBuildings: { blacksmith_level_2: 1, watchtower: 1 } },
+    production: { workerSlots: 4, produces: { weapons: 3 }, consumes: { wood: 2, stone: 4, tools: 2 } },
   },
   tavern_level_1: {
     type: 'tavern_level_1',
@@ -222,6 +228,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x8f563b,
     spritePath: spritePath('tavern_level_1'),
     unlock: { minDay: 6, minPopulation: 5, requiresBuildings: { market_stall: 1, house_level_2: 1 } },
+    production: { workerSlots: 1, consumes: { food: 1 }, moraleBonus: 2 },
   },
   tavern_level_2: {
     type: 'tavern_level_2',
@@ -232,6 +239,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x865036,
     spritePath: spritePath('tavern_level_2'),
     unlock: { minDay: 8, minPopulation: 7, requiresBuildings: { tavern_level_1: 1, shrine: 1 } },
+    production: { workerSlots: 2, consumes: { food: 2 }, moraleBonus: 3 },
   },
   tavern_level_3: {
     type: 'tavern_level_3',
@@ -242,6 +250,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x7b4932,
     spritePath: spritePath('tavern_level_3'),
     unlock: { minDay: 10, minPopulation: 9, requiresBuildings: { tavern_level_2: 1, town_hall: 1 } },
+    production: { workerSlots: 3, consumes: { food: 3 }, moraleBonus: 5 },
   },
   town_hall: {
     type: 'town_hall',
@@ -262,6 +271,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0xa57856,
     spritePath: spritePath('farmhouse'),
     unlock: { requiresBuildings: { storage_level_1: 1 } },
+    production: { workerSlots: 1, produces: { food: 4 } },
   },
   well: {
     type: 'well',
@@ -272,6 +282,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x7a7767,
     spritePath: spritePath('well'),
     unlock: { minDay: 2, requiresBuildings: { storage_level_1: 1 } },
+    production: { workerSlots: 0, moraleBonus: 1 },
   },
   workshop: {
     type: 'workshop',
@@ -282,6 +293,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x7b6547,
     spritePath: spritePath('workshop'),
     unlock: { minDay: 3, requiresBuildings: { lumber_mill_level_1: 1, farmhouse: 1 } },
+    production: { workerSlots: 2, produces: { tools: 1 }, consumes: { wood: 2, stone: 1 } },
   },
   market_stall: {
     type: 'market_stall',
@@ -292,6 +304,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0xb17e4c,
     spritePath: spritePath('market_stall'),
     unlock: { minPopulation: 4, requiresBuildings: { house_level_1: 1 } },
+    production: { workerSlots: 1, moraleBonus: 1 },
   },
   watchtower: {
     type: 'watchtower',
@@ -302,6 +315,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x6e604b,
     spritePath: spritePath('watchtower'),
     unlock: { minDay: 6, requiresBuildings: { blacksmith_level_1: 1 } },
+    production: { workerSlots: 1, moraleBonus: 2 },
   },
   shrine: {
     type: 'shrine',
@@ -312,6 +326,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x7d8268,
     spritePath: spritePath('shrine'),
     unlock: { minDay: 4, minPopulation: 4, requiresBuildings: { well: 1 } },
+    production: { workerSlots: 0, moraleBonus: 2 },
   },
   herb_hut: {
     type: 'herb_hut',
@@ -322,6 +337,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x5b7b52,
     spritePath: spritePath('herb_hut'),
     unlock: { minDay: 3, requiresBuildings: { farmhouse: 1 } },
+    production: { workerSlots: 1, produces: { food: 2 } },
   },
   fisher_hut: {
     type: 'fisher_hut',
@@ -332,6 +348,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x5d7284,
     spritePath: spritePath('fisher_hut'),
     unlock: { minDay: 4, requiresBuildings: { well: 1 } },
+    production: { workerSlots: 1, produces: { food: 3 } },
   },
   bakery: {
     type: 'bakery',
@@ -342,6 +359,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0xbe9460,
     spritePath: spritePath('bakery'),
     unlock: { minDay: 5, requiresBuildings: { farmhouse: 1, workshop: 1 } },
+    production: { workerSlots: 2, produces: { food: 4 }, consumes: { food: 2, wood: 1 } },
   },
   mason_yard: {
     type: 'mason_yard',
@@ -352,6 +370,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x7a7c7f,
     spritePath: spritePath('mason_yard'),
     unlock: { minDay: 3, requiresBuildings: { lumber_mill_level_1: 1 } },
+    production: { workerSlots: 2, produces: { stone: 5 } },
   },
   stable: {
     type: 'stable',
@@ -362,6 +381,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     color: 0x8f6a48,
     spritePath: spritePath('stable'),
     unlock: { minDay: 6, minPopulation: 5, requiresBuildings: { farmhouse: 1, house_level_2: 1 } },
+    production: { workerSlots: 1 },
   },
 };
 

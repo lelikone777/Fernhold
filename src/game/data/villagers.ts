@@ -1,4 +1,5 @@
 import type { BuildingType, VillagerPalette } from '../types/game';
+import { BUILDING_DEFINITIONS } from './buildings';
 
 export const VILLAGER_SPRITE_KEY_PREFIX = 'villager_sprite_';
 export const VILLAGER_SPRITE_WIDTH = 12;
@@ -27,34 +28,32 @@ export const HOUSE_BUILDING_TYPES: ReadonlySet<BuildingType> = new Set<BuildingT
   'farmhouse',
 ]);
 
-export const WORK_BUILDING_TYPES: ReadonlySet<BuildingType> = new Set<BuildingType>([
-  'lumber_mill_level_1',
-  'lumber_mill_level_2',
-  'lumber_mill_level_3',
-  'farmhouse',
-  'fisher_hut',
-  'herb_hut',
-  'mason_yard',
-  'workshop',
-  'bakery',
-  'blacksmith_level_1',
-  'blacksmith_level_2',
-  'blacksmith_level_3',
-  'market_stall',
-  'tavern_level_1',
-  'tavern_level_2',
-  'tavern_level_3',
-  'watchtower',
-  'shrine',
-  'stable',
-  'barn_level_1',
-  'barn_level_2',
-  'barn_level_3',
-  'barn_level_4',
-  'barn_level_5',
-  'town_hall',
-  'well',
+export const WORK_BUILDING_TYPES: ReadonlySet<BuildingType> = new Set<BuildingType>(
+  (Object.values(BUILDING_DEFINITIONS) as { type: BuildingType; production?: { workerSlots: number } }[])
+    .filter((def) => def.production != null && def.production.workerSlots > 0)
+    .map((def) => def.type),
+);
+
+const WORK_PRIORITY: ReadonlyMap<string, number> = new Map([
+  ['food', 0],
+  ['wood', 1],
+  ['stone', 2],
+  ['tools', 3],
+  ['weapons', 4],
 ]);
+
+export function getWorkPriority(buildingType: BuildingType): number {
+  const def = BUILDING_DEFINITIONS[buildingType];
+  if (!def.production) return 99;
+  const produces = def.production.produces;
+  if (!produces) return 50;
+  let best = 99;
+  for (const key of Object.keys(produces)) {
+    const p = WORK_PRIORITY.get(key) ?? 90;
+    if (p < best) best = p;
+  }
+  return best;
+}
 
 export const HOUSE_CAPACITY: Partial<Record<BuildingType, number>> = {
   house_level_1: 2,

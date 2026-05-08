@@ -56,20 +56,21 @@ export const createBuildingView = (
   const visualHeight = Math.max(40, height * 2.5);
 
   const shadow = scene.add.rectangle(width * 0.5, height - 4, width * 0.78, 6, 0x000000, 0.18).setOrigin(0.5);
-  const base = scene.add.rectangle(0, 0, width, height, 0x000000, 0.08).setOrigin(0);
-  base.setStrokeStyle(1, 0x2a221a, 0.3);
 
   const iconKey = `building_sprite_${definition.type}`;
 
-  const children: Phaser.GameObjects.GameObject[] = [shadow, base];
+  const children: Phaser.GameObjects.GameObject[] = [shadow];
   if (scene.textures.exists(iconKey)) {
     const sprite = scene.add.image(width * 0.5, height + 2, iconKey);
     sprite.setDisplaySize(visualWidth, visualHeight);
     sprite.setOrigin(0.5, 1);
     children.push(sprite);
   } else {
+    const base = scene.add.rectangle(0, 0, width, height, 0x000000, 0.08).setOrigin(0);
+    base.setStrokeStyle(1, 0x2a221a, 0.3);
     const fallback = scene.add.rectangle(width * 0.5, height * 0.5, width * 0.9, height * 0.9, definition.color, 0.88);
     fallback.setStrokeStyle(1, 0x2a221a, 0.9);
+    children.push(base);
     children.push(fallback);
   }
 

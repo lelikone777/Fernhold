@@ -23,8 +23,14 @@ const baseVillage = (): VillageState => ({
   housing: 6,
   foodNeed: 8,
   toolsNeed: 2,
-  weaponsNeed: 1,
+  weaponsNeed: 0,
 });
+
+const noWorkers = new Map<string, number>();
+
+function workersFor(...entries: [string, number][]): ReadonlyMap<string, number> {
+  return new Map(entries);
+}
 
 describe('EconomySystem.syncVillage', () => {
   it('recomputes housing from placed buildings', () => {
@@ -45,33 +51,74 @@ describe('EconomySystem.syncVillage', () => {
     expect(village.toolsNeed).toBe(3);
     expect(village.weaponsNeed).toBe(3);
   });
+
+  it('sets weaponsNeed to 0 for small settlements', () => {
+    const economy = new EconomySystem();
+    const village = economy.syncVillage([], { ...baseVillage(), population: 4 });
+    expect(village.weaponsNeed).toBe(0);
+  });
+
+  it('enables weaponsNeed when population exceeds 4', () => {
+    const economy = new EconomySystem();
+    const village = economy.syncVillage([], { ...baseVillage(), population: 5 });
+    expect(village.weaponsNeed).toBe(2);
+  });
 });
 
 describe('EconomySystem.processDay', () => {
-  it('produces wood from lumber mills', () => {
+  it('produces wood from lumber mills when staffed', () => {
     const economy = new EconomySystem();
     const buildings = [
       makeBuilding('lm', 'lumber_mill_level_1'),
       makeBuilding('lm2', 'lumber_mill_level_2'),
     ];
-    const result = economy.processDay(2, baseResources(), buildings, baseVillage());
+    const workers = workersFor(['lm', 2], ['lm2', 3]);
+    const result = economy.processDay(2, baseResources(), buildings, baseVillage(), workers);
     expect(result.report.produced.wood).toBeGreaterThan(0);
-    expect(result.resources.wood).toBeGreaterThan(baseResources().wood - 1);
+    expect(result.resources.wood).toBeGreaterThan(baseResources().wood);
+  });
+
+  it('unstaffed buildings produce no building output', () => {
+    const economy = new EconomySystem();
+    const buildings = [makeBuilding('lm', 'lumber_mill_level_1')];
+    const village = baseVillage();
+    const result = economy.processDay(2, baseResources(), buildings, village, noWorkers);
+    // 4 idle villagers gather 4 wood each — no building production
+    expect(result.report.produced.wood).toBe(4);
+  });
+
+  it('scales production with partial staffing', () => {
+    const economy = new EconomySystem();
+    const buildings = [makeBuilding('lm', 'lumber_mill_level_1')];
+    const full = economy.processDay(2, baseResources(), buildings, baseVillage(), workersFor(['lm', 2]));
+    const half = economy.processDay(2, baseResources(), buildings, baseVillage(), workersFor(['lm', 1]));
+    expect(full.report.produced.wood ?? 0).toBeGreaterThan(half.report.produced.wood ?? 0);
+  });
+
+  it('idle villagers gather wood, stone, and food', () => {
+    const economy = new EconomySystem();
+    const village = { ...baseVillage(), population: 3 };
+    const result = economy.processDay(2, baseResources(), [], village, noWorkers);
+    expect(result.report.produced.wood).toBe(3);
+    expect(result.report.produced.stone).toBe(3);
+    expect(result.report.produced.food).toBe(3);
+    expect(result.report.notes.some((n) => n.includes('gather'))).toBe(true);
   });
 
   it('consumes food equal to foodNeed when supply is sufficient', () => {
     const economy = new EconomySystem();
     const village = baseVillage();
-    const result = economy.processDay(2, baseResources(), [], village);
+    const result = economy.processDay(2, baseResources(), [], village, noWorkers);
     expect(result.report.consumed.food).toBe(village.foodNeed);
-    expect(result.resources.food).toBe(baseResources().food - village.foodNeed);
+    // food = 50 + 4 (gathering by 4 idle) - 8 (consumption) = 46
+    expect(result.resources.food).toBe(baseResources().food + village.population - village.foodNeed);
   });
 
   it('drops morale on food shortage and reports it', () => {
     const economy = new EconomySystem();
     const village = { ...baseVillage(), morale: 60 };
     const lowFood: Resources = { ...baseResources(), food: 2 };
-    const result = economy.processDay(2, lowFood, [], village);
+    const result = economy.processDay(2, lowFood, [], village, noWorkers);
     expect(result.resources.food).toBe(0);
     expect(result.village.morale).toBeLessThan(60);
     expect(result.report.notes.some((n) => n.includes('Food shortage'))).toBe(true);
@@ -82,8 +129,9 @@ describe('EconomySystem.processDay', () => {
     const buildings = [makeBuilding('lm', 'lumber_mill_level_1')];
     const noTools: Resources = { ...baseResources(), tools: 0 };
     const village = baseVillage();
-    const withTools = economy.processDay(2, baseResources(), buildings, village);
-    const withoutTools = economy.processDay(2, noTools, buildings, village);
+    const workers = workersFor(['lm', 2]);
+    const withTools = economy.processDay(2, baseResources(), buildings, village, workers);
+    const withoutTools = economy.processDay(2, noTools, buildings, village, workers);
     expect(withoutTools.report.produced.wood ?? 0).toBeLessThan(
       withTools.report.produced.wood ?? 0,
     );
@@ -97,6 +145,7 @@ describe('EconomySystem.processDay', () => {
       { ...baseResources(), food: 100 },
       [makeBuilding('w', 'well'), makeBuilding('s', 'shrine'), makeBuilding('m', 'market_stall')],
       village,
+      workersFor(['m', 1]),
     );
     expect(result.village.morale).toBeLessThanOrEqual(100);
     expect(result.village.morale).toBeGreaterThanOrEqual(0);
@@ -110,13 +159,14 @@ describe('EconomySystem.processDay', () => {
       housing: 10,
       foodNeed: 4,
       toolsNeed: 1,
-      weaponsNeed: 1,
+      weaponsNeed: 0,
     };
     const result = economy.processDay(
       3,
       { ...baseResources(), food: 100 },
       [makeBuilding('h', 'house_level_2')],
       village,
+      noWorkers,
     );
     expect(result.village.population).toBe(3);
   });
@@ -129,7 +179,19 @@ describe('EconomySystem.processDay', () => {
       { ...baseResources(), food: 0 },
       [],
       village,
+      noWorkers,
     );
     expect(result.village.population).toBeLessThan(4);
+  });
+
+  it('reports worker shortage when slots are unfilled', () => {
+    const economy = new EconomySystem();
+    const buildings = [
+      makeBuilding('lm', 'lumber_mill_level_1'),
+      makeBuilding('ws', 'workshop'),
+    ];
+    const workers = workersFor(['lm', 1]);
+    const result = economy.processDay(2, baseResources(), buildings, baseVillage(), workers);
+    expect(result.report.notes.some((n) => n.includes('Worker shortage'))).toBe(true);
   });
 });

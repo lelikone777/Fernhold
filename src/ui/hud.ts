@@ -1,9 +1,11 @@
 import type {
   BuildingAvailability,
+  BuildingDetailsPayload,
   BuildingDefinition,
   BuildingType,
   DevFoliageDefinition,
   DevRoadDefinition,
+  ResourceType,
   Resources,
   VillageState,
 } from '../game/types/game';
@@ -21,6 +23,7 @@ interface HudOptions {
   devFoliageItems: DevFoliageDefinition[];
   devRoadItems: DevRoadDefinition[];
   terrainPreviewItems?: TerrainPreviewItemInput[];
+  resolveBuildingIcon?: (building: BuildingDefinition) => string | null;
   onSelectBuilding: (type: BuildingType) => void;
   onSetBulldozeMode: (enabled: boolean) => void;
   onResetSave: () => void;
@@ -28,11 +31,13 @@ interface HudOptions {
   onSelectDevFoliage: (foliageId: string) => void;
   onSelectDevRoad: (roadId: string) => void;
   onEraseDevPaintTile: () => void;
+  onCloseBuildingDetails: () => void;
 }
 
 export interface HudController {
   setResources: (resources: Resources) => void;
   setVillage: (village: VillageState) => void;
+  setWorkerInfo: (assigned: number, totalSlots: number) => void;
   setBuildingAvailability: (availability: Record<BuildingType, BuildingAvailability>) => void;
   setSelectedBuilding: (type: BuildingType | null, bulldozeMode: boolean) => void;
   setDay: (day: number) => void;
@@ -41,11 +46,15 @@ export interface HudController {
     selectedFoliageId: string | null,
     selectedRoadId: string | null,
   ) => void;
+  setBuildingDetails: (payload: BuildingDetailsPayload | null) => void;
   showMessage: (text: string) => void;
   destroy: () => void;
 }
 
 export const createHud = (root: HTMLElement, options: HudOptions): HudController => {
+  const getBuildingIconSrc = (building: BuildingDefinition): string =>
+    options.resolveBuildingIcon?.(building) ?? building.spritePath;
+
   root.innerHTML = `
     <div class="hud-top panel">
       <div class="resource-list">
@@ -63,6 +72,7 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
         <span>Food Need: <strong data-village="foodNeed">0</strong></span>
         <span>Tools Need: <strong data-village="toolsNeed">0</strong></span>
         <span>Weapons Need: <strong data-village="weaponsNeed">0</strong></span>
+        <span>Workers: <strong data-workers>0/0</strong></span>
       </div>
       <button type="button" class="hud-button" data-action="reset">Reset Save</button>
     </div>
@@ -110,6 +120,30 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
       </div>
       <button type="button" class="hud-button dev-erase" data-action="dev-erase">Erase</button>
     </div>
+    <div class="building-details panel is-hidden" data-building-details>
+      <div class="building-details-head">
+        <strong class="building-details-title" data-bd-name>Building</strong>
+        <button type="button" class="building-details-close" data-action="close-building-details">×</button>
+      </div>
+      <div class="building-details-grid">
+        <span>Type</span><strong data-bd-type>-</strong>
+        <span>Status</span><strong data-bd-status>-</strong>
+        <span>Workers</span><strong data-bd-workers>-</strong>
+        <span>Efficiency</span><strong data-bd-efficiency>-</strong>
+        <span>Footprint</span><strong data-bd-size>-</strong>
+        <span>Position</span><strong data-bd-position>-</strong>
+      </div>
+      <p class="building-details-purpose" data-bd-purpose></p>
+      <div class="building-details-section">
+        <span class="building-details-section-title">Produces</span>
+        <div class="building-details-list" data-bd-produces></div>
+      </div>
+      <div class="building-details-section">
+        <span class="building-details-section-title">Consumes</span>
+        <div class="building-details-list" data-bd-consumes></div>
+      </div>
+      <div class="building-details-foot" data-bd-extra></div>
+    </div>
     <div class="hud-toast" data-toast aria-live="polite"></div>
     <div class="hud-preview" data-preview aria-hidden="true">
       <img class="hud-preview-img" alt="" />
@@ -129,6 +163,7 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   const foodNeedEl = root.querySelector<HTMLElement>('[data-village="foodNeed"]');
   const toolsNeedEl = root.querySelector<HTMLElement>('[data-village="toolsNeed"]');
   const weaponsNeedEl = root.querySelector<HTMLElement>('[data-village="weaponsNeed"]');
+  const workersEl = root.querySelector<HTMLElement>('[data-workers]');
   const devTabs = root.querySelector<HTMLElement>('[data-dev-tabs]');
   const devFoliageGrid = root.querySelector<HTMLElement>('[data-dev-foliage-grid]');
   const devBuildingsGrid = root.querySelector<HTMLElement>('[data-dev-buildings-grid]');
@@ -138,6 +173,21 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   const bulldozeButton = root.querySelector<HTMLButtonElement>('[data-action="bulldoze"]');
   const toastEl = root.querySelector<HTMLElement>('[data-toast]');
   const resetButton = root.querySelector<HTMLButtonElement>('[data-action="reset"]');
+  const buildingDetailsEl = root.querySelector<HTMLElement>('[data-building-details]');
+  const closeBuildingDetailsButton = root.querySelector<HTMLButtonElement>(
+    '[data-action="close-building-details"]',
+  );
+  const buildingDetailsNameEl = root.querySelector<HTMLElement>('[data-bd-name]');
+  const buildingDetailsTypeEl = root.querySelector<HTMLElement>('[data-bd-type]');
+  const buildingDetailsStatusEl = root.querySelector<HTMLElement>('[data-bd-status]');
+  const buildingDetailsWorkersEl = root.querySelector<HTMLElement>('[data-bd-workers]');
+  const buildingDetailsEfficiencyEl = root.querySelector<HTMLElement>('[data-bd-efficiency]');
+  const buildingDetailsSizeEl = root.querySelector<HTMLElement>('[data-bd-size]');
+  const buildingDetailsPositionEl = root.querySelector<HTMLElement>('[data-bd-position]');
+  const buildingDetailsPurposeEl = root.querySelector<HTMLElement>('[data-bd-purpose]');
+  const buildingDetailsProducesEl = root.querySelector<HTMLElement>('[data-bd-produces]');
+  const buildingDetailsConsumesEl = root.querySelector<HTMLElement>('[data-bd-consumes]');
+  const buildingDetailsExtraEl = root.querySelector<HTMLElement>('[data-bd-extra]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
   const previewImgEl = previewEl?.querySelector<HTMLImageElement>('.hud-preview-img') ?? null;
   const previewCaptionEl = root.querySelector<HTMLElement>('[data-preview-caption]');
@@ -164,6 +214,19 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     !bulldozeButton ||
     !toastEl ||
     !resetButton ||
+    !buildingDetailsEl ||
+    !closeBuildingDetailsButton ||
+    !buildingDetailsNameEl ||
+    !buildingDetailsTypeEl ||
+    !buildingDetailsStatusEl ||
+    !buildingDetailsWorkersEl ||
+    !buildingDetailsEfficiencyEl ||
+    !buildingDetailsSizeEl ||
+    !buildingDetailsPositionEl ||
+    !buildingDetailsPurposeEl ||
+    !buildingDetailsProducesEl ||
+    !buildingDetailsConsumesEl ||
+    !buildingDetailsExtraEl ||
     !previewEl ||
     !previewImgEl ||
     !previewCaptionEl
@@ -265,11 +328,11 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
       `;
       const headIcon = head.querySelector<HTMLImageElement>('.build-icon');
       if (headIcon) {
-        bindImageFallback(headIcon, [group.variants[0].spritePath]);
+        bindImageFallback(headIcon, [getBuildingIconSrc(group.variants[0])]);
       }
       attachPreview(
         head,
-        group.variants[0].spritePath,
+        getBuildingIconSrc(group.variants[0]),
         `${group.label} · ${group.variants.length} levels`,
       );
       head.addEventListener('click', () => {
@@ -315,6 +378,10 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
 
   bulldozeButton.addEventListener('click', () => {
     options.onSetBulldozeMode(true);
+  });
+
+  closeBuildingDetailsButton.addEventListener('click', () => {
+    options.onCloseBuildingDetails();
   });
 
   for (const tabButton of devTabs.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
@@ -449,6 +516,58 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     weaponsNeedEl.textContent = String(village.weaponsNeed);
   };
 
+  const setWorkerInfo = (assigned: number, totalSlots: number): void => {
+    if (workersEl) {
+      workersEl.textContent = `${assigned}/${totalSlots}`;
+      workersEl.classList.toggle('is-shortage', assigned < totalSlots && totalSlots > 0);
+    }
+  };
+
+  const setBuildingDetails = (payload: BuildingDetailsPayload | null): void => {
+    if (!payload) {
+      buildingDetailsEl.classList.add('is-hidden');
+      return;
+    }
+
+    buildingDetailsEl.classList.remove('is-hidden');
+    buildingDetailsEl.dataset.status = payload.status;
+
+    buildingDetailsNameEl.textContent = `${payload.name} (Lv${payload.level})`;
+    buildingDetailsTypeEl.textContent = payload.type;
+    buildingDetailsStatusEl.textContent = payload.statusLabel;
+    buildingDetailsWorkersEl.textContent =
+      payload.workerSlots > 0 ? `${payload.workersAssigned}/${payload.workerSlots}` : 'N/A';
+    buildingDetailsEfficiencyEl.textContent = `${payload.efficiency}%`;
+    buildingDetailsSizeEl.textContent = `${payload.size.w}x${payload.size.h}`;
+    buildingDetailsPositionEl.textContent = `${payload.position.x}, ${payload.position.y}`;
+    buildingDetailsPurposeEl.textContent = payload.purpose;
+
+    buildingDetailsProducesEl.innerHTML =
+      payload.produces.length > 0
+        ? payload.produces
+            .map((line) => `<span class="flow-chip is-positive">+${line.amount} ${formatResourceName(line.resource)}</span>`)
+            .join('')
+        : '<span class="flow-empty">No production</span>';
+
+    buildingDetailsConsumesEl.innerHTML =
+      payload.consumes.length > 0
+        ? payload.consumes
+            .map((line) => {
+              const available = line.available ?? 0;
+              const ok = available >= line.amount;
+              return `<span class="flow-chip ${ok ? '' : 'is-missing'}">-${line.amount} ${formatResourceName(line.resource)} <em>${available}</em></span>`;
+            })
+            .join('')
+        : '<span class="flow-empty">No consumption</span>';
+
+    buildingDetailsExtraEl.textContent =
+      payload.moraleBonus !== 0
+        ? `Morale bonus: +${payload.moraleBonus}`
+        : payload.workerSlots > 0
+          ? 'Production building'
+          : 'Service / decorative building';
+  };
+
   const setBuildingAvailability = (availability: Record<BuildingType, BuildingAvailability>): void => {
     for (const [buildingType, button] of devBuildingButtons.entries()) {
       const state = availability[buildingType];
@@ -528,10 +647,12 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   return {
     setResources,
     setVillage,
+    setWorkerInfo,
     setBuildingAvailability,
     setSelectedBuilding,
     setDay,
     setDevPaintState,
+    setBuildingDetails,
     showMessage,
     destroy,
   };
@@ -541,7 +662,7 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     captionOverride?: string,
     level?: number,
   ): HTMLButtonElement {
-    const iconSrcList = [building.spritePath];
+    const iconSrcList = [getBuildingIconSrc(building)];
     const devButton = document.createElement('button');
     devButton.type = 'button';
     devButton.className = 'dev-paint-tile dev-building-tile';
@@ -583,7 +704,7 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     devButton.title = building.purpose ?? building.name;
     attachPreview(
       devButton,
-      building.spritePath,
+      getBuildingIconSrc(building),
       `${building.name} · ${building.size.w}×${building.size.h}${building.purpose ? ` — ${building.purpose}` : ''}`,
     );
     devButton.addEventListener('click', () => {
@@ -715,6 +836,23 @@ const renderStars = (count: number): string => {
 const cleanBuildingName = (building: BuildingDefinition): string => {
   const match = building.name.match(/^(.+?)\s+Lv\d+$/);
   return match ? match[1] : building.name;
+};
+
+const formatResourceName = (resource: ResourceType): string => {
+  switch (resource) {
+    case 'wood':
+      return 'Wood';
+    case 'stone':
+      return 'Stone';
+    case 'food':
+      return 'Food';
+    case 'tools':
+      return 'Tools';
+    case 'weapons':
+      return 'Weapons';
+    default:
+      return resource;
+  }
 };
 
 const bindImageFallback = (img: HTMLImageElement, sources: string[]): void => {

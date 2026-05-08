@@ -184,6 +184,8 @@ export class RoadPaintSystem {
         return 'road_stone_tiles_runtime';
       case 'cobble_path':
         return 'road_cobble_tiles_runtime';
+      case 'country_path':
+        return 'road_dirt_tiles_runtime';
       default:
         return null;
     }
@@ -276,6 +278,8 @@ export class RoadPaintSystem {
         return { base: 0x8f8d87, edge: 0x6b6a66, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
       case 'cobble_path':
         return { base: 0x9f9987, edge: 0x756f62, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
+      case 'country_path':
+        return { base: 0x8f6f46, edge: 0x6f4f2f, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
       default:
         return { base: 0x8f8d87, edge: 0x6b6a66, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
     }

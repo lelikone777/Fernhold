@@ -20,17 +20,27 @@ import { RoadPaintSystem } from '../systems/RoadPaintSystem';
 import { VillagerSystem } from '../systems/VillagerSystem';
 import type {
   BuildingAvailability,
+  BuildingDetailsPayload,
+  BuildingRuntimeStatus,
   BuildingType,
   CameraState,
   DayReport,
   PlacedBuilding,
   RoadType,
+  ResourceType,
   Resources,
   VillageState,
 } from '../types/game';
 import { computeDayNightTint } from '../utils/dayNight';
 import { worldToGrid } from '../utils/grid';
 import { resetIdCounters, setBuildingCounter } from '../utils/ids';
+
+const EARLY_HINTS = new Map<number, string>([
+  [2, 'Tip: Build a Lumber Mill for wood production. Idle villagers gather basic resources.'],
+  [4, 'Tip: You need stone to expand. Keep some villagers idle or build a Mason Yard.'],
+  [6, 'Tip: Build a Workshop to craft tools. Tools boost all production.'],
+  [8, 'Tip: Build houses and raise morale above 75 to attract new villagers.'],
+]);
 
 interface UiSnapshot {
   resources: Resources;
@@ -42,6 +52,9 @@ interface UiSnapshot {
   devPaintEnabled: boolean;
   selectedFoliageId: string | null;
   selectedRoadId: string | null;
+  workersAssigned: number;
+  workerSlots: number;
+  buildingDetails: BuildingDetailsPayload | null;
 }
 
 export class WorldScene extends Phaser.Scene {
@@ -80,6 +93,8 @@ export class WorldScene extends Phaser.Scene {
   private readonly gridBounds = { width: MAP_CONFIG.mapWidth, height: MAP_CONFIG.mapHeight };
   private dayNightOverlay!: Phaser.GameObjects.Rectangle;
   private hoveredBuildingId: string | null = null;
+  private inspectedBuildingId: string | null = null;
+  private buildingDetailsElapsedMs = 0;
   private groundImage!: Phaser.GameObjects.Image;
 
   constructor() {
@@ -162,6 +177,9 @@ export class WorldScene extends Phaser.Scene {
           this.buildingViews.delete(buildingId);
           if (this.hoveredBuildingId === buildingId) {
             this.hoveredBuildingId = null;
+          }
+          if (this.inspectedBuildingId === buildingId) {
+            this.clearBuildingDetails();
           }
           if (view) {
             this.tweens.killTweensOf(view);
@@ -254,6 +272,13 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.updateDayNightOverlay();
+    if (this.inspectedBuildingId) {
+      this.buildingDetailsElapsedMs += delta;
+      if (this.buildingDetailsElapsedMs >= 220) {
+        this.buildingDetailsElapsedMs = 0;
+        this.emitBuildingDetails();
+      }
+    }
 
     if (this.autosaveElapsedMs >= 2000 && !this.isPointerDown) {
       this.persistState();
@@ -267,6 +292,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public getUiSnapshot(): UiSnapshot {
+    const workerInfo = this.computeWorkerInfo();
     return {
       resources: this.resourceSystem.getResources(),
       village: this.village,
@@ -277,7 +303,23 @@ export class WorldScene extends Phaser.Scene {
       devPaintEnabled: this.devPaintState.getSnapshot().enabled,
       selectedFoliageId: this.devPaintState.getSnapshot().selectedFoliageId,
       selectedRoadId: this.devPaintState.getSnapshot().selectedRoadId,
+      workersAssigned: workerInfo.assigned,
+      workerSlots: workerInfo.totalSlots,
+      buildingDetails: this.getBuildingDetailsPayload(this.inspectedBuildingId),
     };
+  }
+
+  private computeWorkerInfo(): { assigned: number; totalSlots: number } {
+    const workerCounts = this.villagerSystem?.getWorkerCounts() ?? new Map<string, number>();
+    let totalSlots = 0;
+    let assigned = 0;
+    for (const building of this.buildingSystem.getBuildings()) {
+      const slots = BUILDING_DEFINITIONS[building.type].production?.workerSlots ?? 0;
+      if (slots <= 0) continue;
+      totalSlots += slots;
+      assigned += Math.min(workerCounts.get(building.id) ?? 0, slots);
+    }
+    return { assigned, totalSlots };
   }
 
   private drawGround(): void {
@@ -316,6 +358,7 @@ export class WorldScene extends Phaser.Scene {
     this.game.events.on(EVENT_KEYS.requestSelectDevFoliage, this.handleSelectDevFoliage, this);
     this.game.events.on(EVENT_KEYS.requestSelectDevRoad, this.handleSelectDevRoad, this);
     this.game.events.on(EVENT_KEYS.requestEraseDevPaintTile, this.handleEraseDevPaintTile, this);
+    this.game.events.on(EVENT_KEYS.requestCloseBuildingDetails, this.handleCloseBuildingDetails, this);
 
     this.events.once('shutdown', () => {
       this.game.events.off(EVENT_KEYS.requestSelectBuilding, this.handleSelectBuilding, this);
@@ -325,6 +368,7 @@ export class WorldScene extends Phaser.Scene {
       this.game.events.off(EVENT_KEYS.requestSelectDevFoliage, this.handleSelectDevFoliage, this);
       this.game.events.off(EVENT_KEYS.requestSelectDevRoad, this.handleSelectDevRoad, this);
       this.game.events.off(EVENT_KEYS.requestEraseDevPaintTile, this.handleEraseDevPaintTile, this);
+      this.game.events.off(EVENT_KEYS.requestCloseBuildingDetails, this.handleCloseBuildingDetails, this);
       this.cleanup();
     });
   }
@@ -339,6 +383,7 @@ export class WorldScene extends Phaser.Scene {
     this.bulldozeMode = false;
     this.selectedBuilding = type;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
@@ -348,6 +393,7 @@ export class WorldScene extends Phaser.Scene {
     this.selectedBuilding = null;
     this.bulldozeMode = enabled;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
@@ -361,6 +407,7 @@ export class WorldScene extends Phaser.Scene {
     this.bulldozeMode = false;
     this.selectedBuilding = enabled ? null : this.selectedBuilding;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
@@ -370,6 +417,7 @@ export class WorldScene extends Phaser.Scene {
     this.selectedBuilding = null;
     this.bulldozeMode = false;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
@@ -379,6 +427,7 @@ export class WorldScene extends Phaser.Scene {
     this.selectedBuilding = null;
     this.bulldozeMode = false;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
@@ -388,14 +437,20 @@ export class WorldScene extends Phaser.Scene {
     this.selectedBuilding = null;
     this.bulldozeMode = false;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
+  }
+
+  private handleCloseBuildingDetails(): void {
+    this.clearBuildingDetails();
   }
 
   private clearSelection(): void {
     this.selectedBuilding = null;
     this.bulldozeMode = false;
     this.preview.clear();
+    this.clearBuildingDetails();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
 
@@ -424,6 +479,10 @@ export class WorldScene extends Phaser.Scene {
       this.paintAtPointer(pointer);
       return;
     }
+    if (!this.selectedBuilding && !this.bulldozeMode) {
+      this.inspectBuildingAtPointer(pointer);
+      return;
+    }
 
     this.placementSystem.tryPlace(pointer, {
       selectedBuilding: this.selectedBuilding,
@@ -446,6 +505,9 @@ export class WorldScene extends Phaser.Scene {
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
     this.game.events.emit(EVENT_KEYS.dayChanged, this.day);
     this.emitDevPaintState();
+    const workerInfo = this.computeWorkerInfo();
+    this.game.events.emit(EVENT_KEYS.workerInfoChanged, workerInfo.assigned, workerInfo.totalSlots);
+    this.emitBuildingDetails();
   }
 
   private persistState(): void {
@@ -479,6 +541,7 @@ export class WorldScene extends Phaser.Scene {
     }
     this.buildingViews.clear();
     this.hoveredBuildingId = null;
+    this.clearBuildingDetails();
 
     this.drawGround();
 
@@ -587,23 +650,33 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private getStarterBuildings(): PlacedBuilding[] {
+    const cx = Math.floor(this.mapWidth * 0.5);
+    const cy = Math.floor(this.mapHeight * 0.5);
     return [
       {
         id: 'storage_001',
         type: 'storage_level_1',
-        x: Math.floor(this.mapWidth * 0.5) - 1,
-        y: Math.floor(this.mapHeight * 0.5) - 1,
+        x: cx - 1,
+        y: cy - 1,
+      },
+      {
+        id: 'farmhouse_001',
+        type: 'farmhouse',
+        x: cx + 2,
+        y: cy - 1,
       },
     ];
   }
 
   private advanceDay(): void {
     this.day += 1;
+    const workerCounts = this.villagerSystem?.getWorkerCounts() ?? new Map<string, number>();
     const result = this.economySystem.processDay(
       this.day,
       this.resourceSystem.getResources(),
       this.buildingSystem.getBuildings(),
       { ...this.village },
+      workerCounts,
     );
     this.resourceSystem.setResources(result.resources);
     this.village = result.village;
@@ -612,6 +685,14 @@ export class WorldScene extends Phaser.Scene {
     this.emitFullState();
     this.persistState();
     this.emitDayReport(result.report);
+    this.showEarlyGameHint();
+  }
+
+  private showEarlyGameHint(): void {
+    const hint = EARLY_HINTS.get(this.day);
+    if (hint) {
+      this.emitToast(hint);
+    }
   }
 
   private emitDayReport(report: DayReport): void {
@@ -741,5 +822,106 @@ export class WorldScene extends Phaser.Scene {
         this.preview.clear();
       }
     }
+  }
+
+  private inspectBuildingAtPointer(pointer: Phaser.Input.Pointer): void {
+    if (pointer.getDistance() > 10) {
+      return;
+    }
+    const grid = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
+    const placed = this.buildingSystem.getBuildingAt(grid.x, grid.y);
+    if (!placed) {
+      this.clearBuildingDetails();
+      return;
+    }
+    this.inspectedBuildingId = placed.id;
+    this.emitBuildingDetails();
+  }
+
+  private clearBuildingDetails(): void {
+    if (this.inspectedBuildingId === null) {
+      return;
+    }
+    this.inspectedBuildingId = null;
+    this.buildingDetailsElapsedMs = 0;
+    this.game.events.emit(EVENT_KEYS.buildingDetailsChanged, null);
+  }
+
+  private emitBuildingDetails(): void {
+    this.game.events.emit(
+      EVENT_KEYS.buildingDetailsChanged,
+      this.getBuildingDetailsPayload(this.inspectedBuildingId),
+    );
+  }
+
+  private getBuildingDetailsPayload(buildingId: string | null): BuildingDetailsPayload | null {
+    if (!buildingId) {
+      return null;
+    }
+    const placed = this.buildingSystem.getBuildings().find((entry) => entry.id === buildingId);
+    if (!placed) {
+      return null;
+    }
+    const definition = BUILDING_DEFINITIONS[placed.type];
+    const production = definition.production;
+    const workerSlots = production?.workerSlots ?? 0;
+    const workersAssigned = this.villagerSystem?.getWorkerCounts().get(placed.id) ?? 0;
+    const effectiveWorkers = workerSlots > 0 ? Math.min(workersAssigned, workerSlots) : 0;
+    const resources = this.resourceSystem.getResources();
+
+    const consumes = Object.entries(production?.consumes ?? {}).map(([resource, amount]) => ({
+      resource: resource as ResourceType,
+      amount,
+      available: resources[resource as ResourceType],
+    }));
+    const produces = Object.entries(production?.produces ?? {}).map(([resource, amount]) => ({
+      resource: resource as ResourceType,
+      amount,
+    }));
+    const moraleBonus = production?.moraleBonus ?? 0;
+
+    const hasInputs = consumes.length > 0;
+    const missingInputs = consumes.some((line) => (line.available ?? 0) < line.amount);
+
+    let status: BuildingRuntimeStatus = 'closed';
+    let statusLabel = 'Closed';
+    if (workerSlots > 0) {
+      if (effectiveWorkers <= 0) {
+        status = 'closed';
+        statusLabel = 'Closed (no workers)';
+      } else if (hasInputs && missingInputs) {
+        status = 'blocked';
+        statusLabel = 'Blocked (missing resources)';
+      } else {
+        status = 'open';
+        statusLabel = 'Open';
+      }
+    } else if (produces.length > 0 || consumes.length > 0 || moraleBonus !== 0) {
+      status = hasInputs && missingInputs ? 'blocked' : 'open';
+      statusLabel = status === 'open' ? 'Open (passive)' : 'Blocked';
+    }
+
+    const match = definition.type.match(/_level_(\d+)$/);
+    const level = match ? Number(match[1]) : 1;
+    const efficiency =
+      workerSlots > 0 ? Math.round((Math.min(effectiveWorkers / workerSlots, 1) * 100)) : 100;
+
+    return {
+      id: placed.id,
+      type: placed.type,
+      name: definition.name,
+      level,
+      purpose: definition.purpose,
+      status,
+      statusLabel,
+      workersAssigned: effectiveWorkers,
+      workerSlots,
+      efficiency,
+      size: definition.size,
+      position: { x: placed.x, y: placed.y },
+      produces,
+      consumes,
+      moraleBonus,
+    };
   }
 }

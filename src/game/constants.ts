@@ -8,8 +8,10 @@ export const EVENT_KEYS = {
   villageChanged: 'fernhold:village-changed',
   buildingAvailabilityChanged: 'fernhold:building-availability-changed',
   buildingSelectionChanged: 'fernhold:building-selection-changed',
+  buildingDetailsChanged: 'fernhold:building-details-changed',
   devPaintStateChanged: 'fernhold:dev-paint-state-changed',
   dayChanged: 'fernhold:day-changed',
+  workerInfoChanged: 'fernhold:worker-info-changed',
   toast: 'fernhold:toast',
   requestSelectBuilding: 'fernhold:request-select-building',
   requestSetBulldozeMode: 'fernhold:request-set-bulldoze-mode',
@@ -18,6 +20,7 @@ export const EVENT_KEYS = {
   requestSelectDevFoliage: 'fernhold:request-select-dev-foliage',
   requestSelectDevRoad: 'fernhold:request-select-dev-road',
   requestEraseDevPaintTile: 'fernhold:request-erase-dev-paint-tile',
+  requestCloseBuildingDetails: 'fernhold:request-close-building-details',
 } as const;
 
 export const CAMERA = {

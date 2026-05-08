@@ -15,6 +15,8 @@ import { registerTerrainTextures } from '../utils/terrainTextures';
 import { createVillagerSpritesheetCanvas } from '../utils/villagerSprite';
 
 export class PreloadScene extends Phaser.Scene {
+  private static readonly BUILDING_FORMATS = ['.png', '.webp', '.jpg', '.jpeg', '.avif'];
+
   constructor() {
     super('PreloadScene');
   }
@@ -38,27 +40,21 @@ export class PreloadScene extends Phaser.Scene {
       this.load.atlas(ITEM_SPRITESHEET.key, ITEM_SPRITESHEET.imagePath, ITEM_SPRITESHEET.atlasPath);
     }
     this.load.image('menu_background', 'tilesetOpenGameBackground.png');
-    this.load.spritesheet('road_dirt_tiles', 'assets/visual/roads/dirt_path_tiles.png', {
-      frameWidth: 256,
-      frameHeight: 256,
-    });
-    this.load.spritesheet('road_stone_tiles', 'assets/visual/roads/stone_path_tiles.png', {
-      frameWidth: 256,
-      frameHeight: 256,
-    });
-    this.load.spritesheet('road_cobble_tiles', 'assets/visual/roads/cobble_path_tiles.png', {
-      frameWidth: 256,
-      frameHeight: 256,
-    });
+    this.load.image('road_dirt_tiles', 'assets/visual/roads/road_single_tile.png');
+    this.load.image('road_stone_tiles', 'assets/visual/roads/stone_road_single_tile.jpg');
+    this.load.image('road_cobble_tiles', 'assets/visual/roads/cobble_road_single_tile.png');
 
     this.load.image('grass_source', 'assets/visual/environment/grass_1.png');
 
-    for (const building of BUILDING_LIST) {
-      this.load.image(`building_sprite_${building.type}`, building.spritePath);
-    }
+    // Building sprites are loaded in `create()` with format fallback (png/webp/jpg/jpeg/avif).
   }
 
   public create(): void {
+    void this.bootstrapScene();
+  }
+
+  private async bootstrapScene(): Promise<void> {
+    await this.ensureBuildingTextures();
     this.stripBuildingBackdrops();
     this.stripRoadBackdrops();
     this.createRoadRuntimeSheets();
@@ -205,104 +201,285 @@ export class PreloadScene extends Phaser.Scene {
   private stripBuildingBackdrops(): void {
     for (const building of BUILDING_LIST) {
       const key = `building_sprite_${building.type}`;
-      const texture = this.textures.get(key);
-      if (!texture) {
+      this.stripBackdropTexture(key);
+    }
+  }
+
+  private stripBackdropTexture(key: string): void {
+    const texture = this.textures.get(key);
+    if (!texture) {
+      return;
+    }
+    const source = texture.getSourceImage() as CanvasImageSource & {
+      width?: number;
+      height?: number;
+    };
+    const width = source?.width ?? 0;
+    const height = source?.height ?? 0;
+    if (!width || !height) {
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(source, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const visited = new Uint8Array(width * height);
+    const queue: number[] = [];
+
+    const edgeCells: number[] = [];
+    const pushEdgeCell = (x: number, y: number): void => {
+      const cell = y * width + x;
+      const index = cell * 4;
+      if (data[index + 3] < 8) {
+        return;
+      }
+      edgeCells.push(cell);
+    };
+
+    for (let x = 0; x < width; x += 1) {
+      pushEdgeCell(x, 0);
+      pushEdgeCell(x, height - 1);
+    }
+    for (let y = 1; y < height - 1; y += 1) {
+      pushEdgeCell(0, y);
+      pushEdgeCell(width - 1, y);
+    }
+
+    if (edgeCells.length < 8) {
+      return;
+    }
+
+    interface EdgeBin {
+      count: number;
+      sumR: number;
+      sumG: number;
+      sumB: number;
+      cells: number[];
+    }
+
+    const bins = new Map<number, EdgeBin>();
+    for (const cell of edgeCells) {
+      const index = cell * 4;
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const keyBin = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      const current = bins.get(keyBin);
+      if (current) {
+        current.count += 1;
+        current.sumR += r;
+        current.sumG += g;
+        current.sumB += b;
+        current.cells.push(cell);
+      } else {
+        bins.set(keyBin, {
+          count: 1,
+          sumR: r,
+          sumG: g,
+          sumB: b,
+          cells: [cell],
+        });
+      }
+    }
+
+    let dominant: EdgeBin | null = null;
+    for (const bin of bins.values()) {
+      if (!dominant || bin.count > dominant.count) {
+        dominant = bin;
+      }
+    }
+    if (!dominant) {
+      return;
+    }
+
+    const dominanceRatio = dominant.count / edgeCells.length;
+    if (dominanceRatio < 0.16) {
+      return;
+    }
+
+    const seedR = dominant.sumR / dominant.count;
+    const seedG = dominant.sumG / dominant.count;
+    const seedB = dominant.sumB / dominant.count;
+
+    const colorDistance = (index: number): number => {
+      const dr = data[index] - seedR;
+      const dg = data[index + 1] - seedG;
+      const db = data[index + 2] - seedB;
+      return Math.hypot(dr, dg, db);
+    };
+
+    const edgeDistances: number[] = [];
+    for (const cell of dominant.cells) {
+      const index = cell * 4;
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      edgeDistances.push(Math.hypot(r - seedR, g - seedG, b - seedB));
+    }
+    edgeDistances.sort((a, b) => a - b);
+    const percentileIndex = Math.min(edgeDistances.length - 1, Math.floor(edgeDistances.length * 0.9));
+    const adaptiveTolerance = Math.max(14, Math.min(70, edgeDistances[percentileIndex] + 10));
+
+    const isBackdropPixel = (index: number): boolean => {
+      const alpha = data[index + 3];
+      if (alpha < 8) {
+        return false;
+      }
+      return colorDistance(index) <= adaptiveTolerance;
+    };
+
+    const pushIfBackdrop = (x: number, y: number): void => {
+      const cell = y * width + x;
+      if (visited[cell] === 1) {
+        return;
+      }
+      const index = cell * 4;
+      if (!isBackdropPixel(index)) {
+        return;
+      }
+      visited[cell] = 1;
+      queue.push(cell);
+    };
+
+    for (let x = 0; x < width; x += 1) {
+      pushIfBackdrop(x, 0);
+      pushIfBackdrop(x, height - 1);
+    }
+    for (let y = 1; y < height - 1; y += 1) {
+      pushIfBackdrop(0, y);
+      pushIfBackdrop(width - 1, y);
+    }
+
+    while (queue.length > 0) {
+      const cell = queue.pop();
+      if (cell === undefined) {
+        break;
+      }
+      const x = cell % width;
+      const y = Math.floor(cell / width);
+      if (x > 0) {
+        pushIfBackdrop(x - 1, y);
+      }
+      if (x < width - 1) {
+        pushIfBackdrop(x + 1, y);
+      }
+      if (y > 0) {
+        pushIfBackdrop(x, y - 1);
+      }
+      if (y < height - 1) {
+        pushIfBackdrop(x, y + 1);
+      }
+    }
+
+    let changed = false;
+    for (let cell = 0; cell < visited.length; cell += 1) {
+      if (visited[cell] !== 1) {
         continue;
       }
-      const source = texture.getSourceImage() as CanvasImageSource & {
-        width?: number;
-        height?: number;
-      };
-      const width = source?.width ?? 0;
-      const height = source?.height ?? 0;
-      if (!width || !height) {
+      data[cell * 4 + 3] = 0;
+      changed = true;
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    // Soften bright fringe pixels touching the removed backdrop.
+    for (let cell = 0; cell < visited.length; cell += 1) {
+      if (visited[cell] === 1) {
+        continue;
+      }
+      const index = cell * 4;
+      if (data[index + 3] < 8) {
+        continue;
+      }
+      const x = cell % width;
+      const y = Math.floor(cell / width);
+      const touchesCleared =
+        (x > 0 && visited[cell - 1] === 1) ||
+        (x < width - 1 && visited[cell + 1] === 1) ||
+        (y > 0 && visited[cell - width] === 1) ||
+        (y < height - 1 && visited[cell + width] === 1);
+      if (!touchesCleared) {
+        continue;
+      }
+      const brightness = (data[index] + data[index + 1] + data[index + 2]) / 3;
+      const colorDelta = colorDistance(index);
+      if (brightness > 90 && colorDelta < adaptiveTolerance + 20) {
+        const fade = Math.min(1, (adaptiveTolerance + 20 - colorDelta) / (adaptiveTolerance + 20));
+        data[index + 3] = Math.round(data[index + 3] * (1 - fade));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    this.textures.remove(key);
+    this.textures.addCanvas(key, canvas);
+  }
+
+  private async ensureBuildingTextures(): Promise<void> {
+    for (const building of BUILDING_LIST) {
+      const key = `building_sprite_${building.type}`;
+      const image = await this.loadBuildingImage(building.spritePath);
+      if (!image) {
         continue;
       }
 
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = image.width;
+      canvas.height = image.height;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         continue;
       }
-      ctx.drawImage(source, 0, 0, width, height);
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const data = imageData.data;
-      const visited = new Uint8Array(width * height);
-      const queue: number[] = [];
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(image, 0, 0);
 
-      const isBackdropPixel = (index: number): boolean => {
-        const alpha = data[index + 3];
-        if (alpha < 8) {
-          return false;
-        }
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
-        const diff = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
-        return (r > 232 && g > 232 && b > 232) || (r > 212 && g > 212 && b > 212 && diff < 9);
-      };
-
-      const pushIfBackdrop = (x: number, y: number): void => {
-        const cell = y * width + x;
-        if (visited[cell] === 1) {
-          return;
-        }
-        const i = cell * 4;
-        if (!isBackdropPixel(i)) {
-          return;
-        }
-        visited[cell] = 1;
-        queue.push(cell);
-      };
-
-      for (let x = 0; x < width; x += 1) {
-        pushIfBackdrop(x, 0);
-        pushIfBackdrop(x, height - 1);
-      }
-      for (let y = 0; y < height; y += 1) {
-        pushIfBackdrop(0, y);
-        pushIfBackdrop(width - 1, y);
-      }
-
-      while (queue.length > 0) {
-        const cell = queue.pop();
-        if (cell === undefined) {
-          break;
-        }
-        const x = cell % width;
-        const y = Math.floor(cell / width);
-        if (x > 0) {
-          pushIfBackdrop(x - 1, y);
-        }
-        if (x < width - 1) {
-          pushIfBackdrop(x + 1, y);
-        }
-        if (y > 0) {
-          pushIfBackdrop(x, y - 1);
-        }
-        if (y < height - 1) {
-          pushIfBackdrop(x, y + 1);
-        }
-      }
-
-      let changed = false;
-      for (let cell = 0; cell < visited.length; cell += 1) {
-        if (visited[cell] !== 1) {
-          continue;
-        }
-        data[cell * 4 + 3] = 0;
-        changed = true;
-      }
-      if (!changed) {
-        continue;
-      }
-
-      ctx.putImageData(imageData, 0, 0);
       this.textures.remove(key);
       this.textures.addCanvas(key, canvas);
     }
+  }
+
+  private async loadBuildingImage(initialPath: string): Promise<HTMLImageElement | null> {
+    const candidates = this.getBuildingPathCandidates(initialPath);
+    for (const url of candidates) {
+      const image = await this.tryLoadImage(url);
+      if (image) {
+        return image;
+      }
+    }
+    return null;
+  }
+
+  private getBuildingPathCandidates(path: string): string[] {
+    const normalized = path.replace(/\\/g, '/');
+    const match = normalized.match(/^(.*?)(\.[^./?]+)(\?.*)?$/);
+    const base = match ? match[1] : normalized;
+    const suffix = match?.[3] ?? '';
+    const candidates = [normalized];
+    for (const ext of PreloadScene.BUILDING_FORMATS) {
+      const candidate = `${base}${ext}${suffix}`;
+      if (!candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
+    }
+    return candidates;
+  }
+
+  private tryLoadImage(url: string): Promise<HTMLImageElement | null> {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
   }
 
   private createGrassPlaceholderTexture(): void {
@@ -436,7 +613,7 @@ export class PreloadScene extends Phaser.Scene {
       const g = data[index + 1];
       const b = data[index + 2];
       const diff = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
-      return (r > 232 && g > 232 && b > 232) || (r > 212 && g > 212 && b > 212 && diff < 9);
+      return (r > 215 && g > 215 && b > 215) || (r > 195 && g > 195 && b > 195 && diff < 18);
     };
 
     const pushIfBackdrop = (x: number, y: number): void => {
