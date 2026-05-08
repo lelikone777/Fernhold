@@ -164,6 +164,7 @@ export interface GameSaveData {
   foliageObjects: PlacedFoliage[];
   day: number;
   camera?: CameraState;
+  terrainSeed?: number;
 }
 
 export interface PlacementResult {

@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "cap:init": "cap init Fernhold com.fernhold.game --web-dir dist",
     "assets:generate": "py scripts/generate_pixel_icons.py",
     "assets:import:elv": "py scripts/import_elv_building_icons.py"
@@ -20,7 +22,8 @@
     "globals": "^16.5.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.46.4",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.1",

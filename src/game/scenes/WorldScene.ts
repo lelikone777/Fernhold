@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { DevPaintStateController } from '../controllers/DevPaintStateController';
 import { WorldPersistenceController } from '../controllers/WorldPersistenceController';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
-import { createBuildingView } from '../entities/Building';
+import { createBuildingView, getBuildingViewMeta, playDemolishTween } from '../entities/Building';
 import { CAMERA, DAY_DURATION_MS, EVENT_KEYS } from '../constants';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 import { MAP_CONFIG } from '../data/map';
@@ -28,8 +28,10 @@ import type {
   Resources,
   VillageState,
 } from '../types/game';
+import { computeDayNightTint } from '../utils/dayNight';
 import { gridToWorld, worldToGrid } from '../utils/grid';
 import { resetIdCounters, setBuildingCounter } from '../utils/ids';
+import { generateTerrainMap, randomTerrainSeed, type TerrainKey } from '../utils/terrainGenerator';
 
 interface UiSnapshot {
   resources: Resources;
@@ -77,6 +79,11 @@ export class WorldScene extends Phaser.Scene {
 
   private readonly buildingViews = new Map<string, Phaser.GameObjects.Container>();
   private readonly gridBounds = { width: MAP_CONFIG.mapWidth, height: MAP_CONFIG.mapHeight };
+  private dayNightOverlay!: Phaser.GameObjects.Rectangle;
+  private hoveredBuildingId: string | null = null;
+  private terrainSeed = 0;
+  private terrainMap: TerrainKey[][] = [];
+  private groundLayer!: Phaser.GameObjects.Container;
 
   constructor() {
     super('WorldScene');
@@ -88,6 +95,9 @@ export class WorldScene extends Phaser.Scene {
 
     this.resourceSystem = new ResourceSystem(initialState.resources);
     this.village = { ...initialState.village };
+
+    this.terrainSeed = initialState.terrainSeed ?? randomTerrainSeed();
+    this.terrainMap = generateTerrainMap(this.mapWidth, this.mapHeight, this.terrainSeed);
 
     this.buildingSystem.load(initialState.buildings);
     this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
@@ -110,7 +120,16 @@ export class WorldScene extends Phaser.Scene {
     this.drawGrid();
     this.roadPaintSystem.renderLayer();
     this.foliagePaintSystem.renderLayer();
+    this.createDayNightOverlay();
     this.preview = this.add.graphics();
+    this.tweens.add({
+      targets: this.preview,
+      alpha: { from: 0.78, to: 1.0 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
     this.placementPreviewSystem = new PlacementPreviewSystem(
       this.preview,
       this.buildingSystem,
@@ -142,10 +161,18 @@ export class WorldScene extends Phaser.Scene {
         refreshBuildingAvailability: () => this.refreshBuildingAvailability(),
         onBuildingPlaced: (buildingId, view) => {
           this.buildingViews.set(buildingId, view);
+          this.spawnPlacementRing(buildingId);
         },
         onBuildingRemoved: (buildingId) => {
-          this.buildingViews.get(buildingId)?.destroy();
+          const view = this.buildingViews.get(buildingId);
           this.buildingViews.delete(buildingId);
+          if (this.hoveredBuildingId === buildingId) {
+            this.hoveredBuildingId = null;
+          }
+          if (view) {
+            this.tweens.killTweensOf(view);
+            playDemolishTween(this, view, () => view.destroy());
+          }
         },
         emitResourcesChanged: () => {
           this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
@@ -188,6 +215,7 @@ export class WorldScene extends Phaser.Scene {
     this.inputSystem.bind();
     this.inputSystem.setPointerMoveCallback((pointer) => {
       this.updatePreview(pointer);
+      this.updateBuildingHover(pointer);
       if (this.isRoadPaintModeActive() && pointer.isDown) {
         this.paintAtPointer(pointer, true);
       }
@@ -231,6 +259,8 @@ export class WorldScene extends Phaser.Scene {
       this.advanceDay();
     }
 
+    this.updateDayNightOverlay();
+
     if (this.autosaveElapsedMs >= 2000 && !this.isPointerDown) {
       this.persistState();
       this.autosaveElapsedMs = 0;
@@ -257,10 +287,17 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private drawGround(): void {
+    if (this.groundLayer) {
+      this.groundLayer.destroy(true);
+    }
+    this.groundLayer = this.add.container(0, 0).setDepth(-1);
     for (let y = 0; y < this.mapHeight; y += 1) {
       for (let x = 0; x < this.mapWidth; x += 1) {
         const world = gridToWorld(x, y, this.tileSize);
-        this.add.image(world.x, world.y, 'terrain_grass_solid').setOrigin(0);
+        const key = this.terrainMap[y]?.[x] ?? 'terrain_grass_solid';
+        const tile = this.add.image(world.x, world.y, key).setOrigin(0);
+        tile.setDisplaySize(this.tileSize, this.tileSize);
+        this.groundLayer.add(tile);
       }
     }
   }
@@ -435,6 +472,7 @@ export class WorldScene extends Phaser.Scene {
       foliageObjects: this.foliagePaintSystem.serialize(),
       day: this.day,
       camera: this.getCameraState(),
+      terrainSeed: this.terrainSeed,
     });
   }
 
@@ -456,6 +494,11 @@ export class WorldScene extends Phaser.Scene {
       view.destroy();
     }
     this.buildingViews.clear();
+    this.hoveredBuildingId = null;
+
+    this.terrainSeed = randomTerrainSeed();
+    this.terrainMap = generateTerrainMap(this.mapWidth, this.mapHeight, this.terrainSeed);
+    this.drawGround();
 
     this.buildingSystem.clear();
     this.buildingSystem.load(starterBuildings);
@@ -607,6 +650,100 @@ export class WorldScene extends Phaser.Scene {
       parts.push(report.notes[0]);
     }
     this.emitToast(parts.join(' | '));
+  }
+
+  private updateBuildingHover(pointer: Phaser.Input.Pointer): void {
+    const isInteractingMode =
+      this.selectedBuilding !== null ||
+      this.bulldozeMode ||
+      this.devPaintState.getSnapshot().enabled;
+    let hoveredId: string | null = null;
+    if (!isInteractingMode) {
+      const grid = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
+      const placed = this.buildingSystem.getBuildingAt(grid.x, grid.y);
+      hoveredId = placed?.id ?? null;
+    }
+    if (hoveredId === this.hoveredBuildingId) {
+      return;
+    }
+    if (this.hoveredBuildingId) {
+      const prev = this.buildingViews.get(this.hoveredBuildingId);
+      if (prev) {
+        this.tweens.killTweensOf(prev);
+        this.tweens.add({
+          targets: prev,
+          scale: 1,
+          duration: 140,
+          ease: 'Quad.easeOut',
+        });
+      }
+    }
+    this.hoveredBuildingId = hoveredId;
+    if (hoveredId) {
+      const next = this.buildingViews.get(hoveredId);
+      if (next) {
+        this.tweens.killTweensOf(next);
+        this.tweens.add({
+          targets: next,
+          scale: 1.045,
+          duration: 160,
+          ease: 'Quad.easeOut',
+        });
+      }
+    }
+  }
+
+  private spawnPlacementRing(buildingId: string): void {
+    const view = this.buildingViews.get(buildingId);
+    if (!view) {
+      return;
+    }
+    const placed = this.buildingSystem.getBuildings().find((b) => b.id === buildingId);
+    if (!placed) {
+      return;
+    }
+    const definition = BUILDING_DEFINITIONS[placed.type];
+    const cx = view.x + (definition.size.w * this.tileSize) * 0.5;
+    const cy = view.y + (definition.size.h * this.tileSize) * 0.5;
+    const ring = this.add.circle(cx, cy, definition.size.w * this.tileSize * 0.35, 0xffe8b0, 0);
+    ring.setStrokeStyle(2, 0xffe8b0, 0.85);
+    ring.setDepth(1.2);
+    this.tweens.add({
+      targets: ring,
+      scale: 2.4,
+      alpha: 0,
+      duration: 520,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  private createDayNightOverlay(): void {
+    const worldPixelsWidth = this.mapWidth * this.tileSize;
+    const worldPixelsHeight = this.mapHeight * this.tileSize;
+    this.dayNightOverlay = this.add
+      .rectangle(0, 0, worldPixelsWidth, worldPixelsHeight, 0x000018, 0)
+      .setOrigin(0)
+      .setDepth(900)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY);
+  }
+
+  private updateDayNightOverlay(): void {
+    if (!this.dayNightOverlay) {
+      return;
+    }
+    const t = (this.dayElapsedMs % DAY_DURATION_MS) / DAY_DURATION_MS;
+    const tint = computeDayNightTint(t);
+    this.dayNightOverlay.fillColor = tint.color;
+    this.dayNightOverlay.fillAlpha = tint.alpha;
+
+    const lightAlpha = Math.min(0.9, tint.alpha * 1.7);
+    for (const view of this.buildingViews.values()) {
+      const meta = getBuildingViewMeta(view);
+      if (meta?.light) {
+        meta.light.setFillStyle(meta.light.fillColor, lightAlpha);
+      }
+    }
   }
 
   private refreshBuildingAvailability(): void {
