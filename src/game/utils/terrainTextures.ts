@@ -226,6 +226,51 @@ export const registerTerrainTextures = (scene: Phaser.Scene): void => {
   }
 };
 
+const GRASS_VARIANTS = [
+  { base: 0x5a8c3e, speckles: [0x6b9d4a, 0x4a7a30, 0x7cae56] },
+  { base: 0x4d7a3a, speckles: [0x5e8b46, 0x3d6a2c, 0x6e9a52] },
+  { base: 0x649646, speckles: [0x75a752, 0x548638, 0x86b860] },
+];
+
+export const generateFullGroundCanvas = (
+  mapWidth: number,
+  mapHeight: number,
+  tileSize: number,
+): HTMLCanvasElement => {
+  const totalW = mapWidth * tileSize;
+  const totalH = mapHeight * tileSize;
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+
+  const rng = seededRandom(0x9fa3b);
+
+  for (let ty = 0; ty < mapHeight; ty += 1) {
+    for (let tx = 0; tx < mapWidth; tx += 1) {
+      const variant = GRASS_VARIANTS[Math.floor(rng() * GRASS_VARIANTS.length)];
+      const px = tx * tileSize;
+      const py = ty * tileSize;
+
+      ctx.fillStyle = hex(variant.base);
+      ctx.fillRect(px, py, tileSize, tileSize);
+
+      for (const speckle of variant.speckles) {
+        ctx.fillStyle = hex(speckle);
+        const count = 3 + Math.floor(rng() * 5);
+        for (let i = 0; i < count; i += 1) {
+          const sx = px + Math.floor(rng() * tileSize);
+          const sy = py + Math.floor(rng() * tileSize);
+          ctx.fillRect(sx, sy, 1, 1);
+        }
+      }
+    }
+  }
+
+  return canvas;
+};
+
 export interface TerrainPreviewItem {
   key: string;
   label: string;
