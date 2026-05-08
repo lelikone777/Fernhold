@@ -10,7 +10,6 @@ import {
   VILLAGER_SPRITE_WIDTH,
   VILLAGER_WALK_FPS,
 } from '../data/villagers';
-import { registerTerrainTextures } from '../utils/terrainTextures';
 import { createVillagerSpritesheetCanvas } from '../utils/villagerSprite';
 
 export class PreloadScene extends Phaser.Scene {
@@ -37,6 +36,8 @@ export class PreloadScene extends Phaser.Scene {
       this.load.atlas(ITEM_SPRITESHEET.key, ITEM_SPRITESHEET.imagePath, ITEM_SPRITESHEET.atlasPath);
     }
     this.load.image('menu_background', 'tilesetOpenGameBackground.png');
+    this.load.image('env_landscape_sheet', 'assets/visual/environment/landscape_sheet.png');
+    this.load.image('env_environment_sheet', 'assets/visual/environment/environment_sheet.png');
     this.load.spritesheet('road_dirt_tiles', 'assets/visual/roads/dirt_path_tiles.png', {
       frameWidth: 256,
       frameHeight: 256,
@@ -60,7 +61,7 @@ export class PreloadScene extends Phaser.Scene {
     this.stripRoadBackdrops();
     this.createRoadRuntimeSheets();
     this.createGrassPlaceholderTexture();
-    registerTerrainTextures(this);
+    this.createTerrainTexturesFromLandscape();
     this.createFoliagePlaceholderTextures();
     this.createVillagerSpritesheets();
     this.createSmokeParticleTexture();
@@ -276,6 +277,169 @@ export class PreloadScene extends Phaser.Scene {
     graphics.fillRect(14, 27, 2, 2);
     graphics.generateTexture('terrain_grass_solid', 32, 32);
     graphics.destroy();
+  }
+
+  private createTerrainTexturesFromLandscape(): void {
+    const sourceTexture = this.textures.get('env_landscape_sheet');
+    if (!sourceTexture) {
+      return;
+    }
+    const source = sourceTexture.getSourceImage() as CanvasImageSource & {
+      width?: number;
+      height?: number;
+    };
+    const width = source?.width ?? 0;
+    const height = source?.height ?? 0;
+    if (!width || !height) {
+      return;
+    }
+
+    const outSize = 16;
+    const tileW = 80;
+    const tileH = 80;
+    const row1Y = 24;
+    const row2Y = 128;
+    const col = (index: number): number => 32 + index * 106;
+    const definitions: Array<{ key: string; x: number; y: number; w: number; h: number }> = [
+      { key: 'terrain_grass_dark', x: col(0), y: row1Y, w: tileW, h: tileH },
+      { key: 'terrain_grass_light', x: col(1), y: row1Y, w: tileW, h: tileH },
+      { key: 'terrain_forest_floor', x: col(2), y: row1Y, w: tileW, h: tileH },
+      { key: 'terrain_dirt', x: col(3), y: row1Y, w: tileW, h: tileH },
+      { key: 'terrain_sand', x: col(4), y: row1Y, w: tileW, h: tileH },
+      { key: 'terrain_stone', x: col(6), y: row1Y, w: tileW, h: tileH },
+      // This strip has no water tile, so use a darker grass/ground fallback.
+      { key: 'terrain_water', x: col(0), y: row2Y, w: tileW, h: tileH },
+      { key: 'terrain_grass_solid', x: col(1), y: row1Y, w: tileW, h: tileH },
+      { key: 'env_grass_a', x: col(0), y: row1Y, w: tileW, h: tileH },
+      { key: 'env_grass_b', x: col(1), y: row1Y, w: tileW, h: tileH },
+      { key: 'env_grass_c', x: col(0), y: row2Y, w: tileW, h: tileH },
+      { key: 'env_grass_d', x: col(1), y: row2Y, w: tileW, h: tileH },
+      { key: 'env_dirt_a', x: col(3), y: row1Y, w: tileW, h: tileH },
+      { key: 'env_dirt_b', x: col(4), y: row1Y, w: tileW, h: tileH },
+      { key: 'env_stone_a', x: col(6), y: row1Y, w: tileW, h: tileH },
+      { key: 'env_stone_b', x: col(7), y: row1Y, w: tileW, h: tileH },
+    ];
+    const fillByKey: Record<string, string> = {
+      terrain_grass_dark: '#5b7f49',
+      terrain_grass_light: '#7da55a',
+      terrain_forest_floor: '#6f8f52',
+      terrain_dirt: '#80664a',
+      terrain_sand: '#9d8a62',
+      terrain_stone: '#7a7a76',
+      terrain_water: '#557a54',
+      terrain_grass_solid: '#6f9f55',
+      env_grass_a: '#6f9f55',
+      env_grass_b: '#6f9f55',
+      env_grass_c: '#6f9f55',
+      env_grass_d: '#6f9f55',
+      env_dirt_a: '#80664a',
+      env_dirt_b: '#80664a',
+      env_stone_a: '#7a7a76',
+      env_stone_b: '#7a7a76',
+    };
+
+    const addCanvas = this.textures as unknown as {
+      addCanvas: (key: string, sourceCanvas: HTMLCanvasElement) => unknown;
+    };
+
+    for (const def of definitions) {
+      const canvas = document.createElement('canvas');
+      canvas.width = outSize;
+      canvas.height = outSize;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        continue;
+      }
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = fillByKey[def.key] ?? '#6f9f55';
+      ctx.fillRect(0, 0, outSize, outSize);
+      const patch = this.findBestTerrainPatch(source, def.x, def.y, def.w, def.h);
+      ctx.drawImage(
+        source as CanvasImageSource,
+        patch.x,
+        patch.y,
+        patch.size,
+        patch.size,
+        0,
+        0,
+        outSize,
+        outSize,
+      );
+
+      if (this.textures.exists(def.key)) {
+        this.textures.remove(def.key);
+      }
+      addCanvas.addCanvas(def.key, canvas);
+    }
+  }
+
+  private findBestTerrainPatch(
+    source: CanvasImageSource,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): { x: number; y: number; size: number } {
+    const probeCanvas = document.createElement('canvas');
+    probeCanvas.width = w;
+    probeCanvas.height = h;
+    const probeCtx = probeCanvas.getContext('2d');
+    if (!probeCtx) {
+      return { x: x + 10, y: y + 10, size: Math.max(16, Math.min(w, h) - 20) };
+    }
+
+    probeCtx.imageSmoothingEnabled = false;
+    probeCtx.drawImage(source, x, y, w, h, 0, 0, w, h);
+    const imageData = probeCtx.getImageData(0, 0, w, h).data;
+
+    const checkerA = this.getPixel(imageData, w, 1, 1);
+    const checkerB = this.getPixel(imageData, w, 3, 1);
+
+    const patchSize = Math.min(44, w - 8, h - 8);
+    let best = { x: x + 4, y: y + 4, score: Number.POSITIVE_INFINITY };
+
+    for (let py = 4; py <= h - patchSize - 4; py += 2) {
+      for (let px = 4; px <= w - patchSize - 4; px += 2) {
+        let checkerHits = 0;
+        let alphaHits = 0;
+        for (let sy = py; sy < py + patchSize; sy += 2) {
+          for (let sx = px; sx < px + patchSize; sx += 2) {
+            const color = this.getPixel(imageData, w, sx, sy);
+            const distA = this.colorDistance(color, checkerA);
+            const distB = this.colorDistance(color, checkerB);
+            if (Math.min(distA, distB) <= 16) {
+              checkerHits += 1;
+            }
+            if (color[3] < 8) {
+              alphaHits += 1;
+            }
+          }
+        }
+        const score = checkerHits * 5 + alphaHits * 10;
+        if (score < best.score) {
+          best = { x: x + px, y: y + py, score };
+        }
+      }
+    }
+
+    return { x: best.x, y: best.y, size: patchSize };
+  }
+
+  private getPixel(
+    data: Uint8ClampedArray,
+    width: number,
+    x: number,
+    y: number,
+  ): [number, number, number, number] {
+    const index = (y * width + x) * 4;
+    return [data[index], data[index + 1], data[index + 2], data[index + 3]];
+  }
+
+  private colorDistance(
+    a: [number, number, number, number],
+    b: [number, number, number, number],
+  ): number {
+    return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
   }
 
   private createFoliagePlaceholderTextures(): void {

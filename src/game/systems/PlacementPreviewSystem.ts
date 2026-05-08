@@ -79,7 +79,22 @@ export class PlacementPreviewSystem {
         this.preview.strokeRect(worldPos.x, worldPos.y, width, height);
         return;
       }
+      const gridPos = worldToGrid(pointer.worldX, pointer.worldY, state.tileSize);
+      if (
+        gridPos.x < 0 ||
+        gridPos.y < 0 ||
+        gridPos.x >= this.gridBounds.width ||
+        gridPos.y >= this.gridBounds.height
+      ) {
+        this.preview.clear();
+        return;
+      }
+      const worldPos = gridToWorld(gridPos.x, gridPos.y, state.tileSize);
       this.preview.clear();
+      this.preview.fillStyle(0xe6f3d8, 0.14);
+      this.preview.fillRect(worldPos.x, worldPos.y, state.tileSize, state.tileSize);
+      this.preview.lineStyle(2, 0xf6ffeb, 1);
+      this.preview.strokeRect(worldPos.x, worldPos.y, state.tileSize, state.tileSize);
       return;
     }
 

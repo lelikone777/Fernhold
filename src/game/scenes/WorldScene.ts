@@ -29,9 +29,9 @@ import type {
   VillageState,
 } from '../types/game';
 import { computeDayNightTint } from '../utils/dayNight';
-import { gridToWorld, worldToGrid } from '../utils/grid';
+import { worldToGrid } from '../utils/grid';
 import { resetIdCounters, setBuildingCounter } from '../utils/ids';
-import { generateTerrainMap, randomTerrainSeed, type TerrainKey } from '../utils/terrainGenerator';
+import { randomTerrainSeed } from '../utils/terrainGenerator';
 
 interface UiSnapshot {
   resources: Resources;
@@ -82,7 +82,6 @@ export class WorldScene extends Phaser.Scene {
   private dayNightOverlay!: Phaser.GameObjects.Rectangle;
   private hoveredBuildingId: string | null = null;
   private terrainSeed = 0;
-  private terrainMap: TerrainKey[][] = [];
   private groundLayer!: Phaser.GameObjects.Container;
 
   constructor() {
@@ -97,7 +96,6 @@ export class WorldScene extends Phaser.Scene {
     this.village = { ...initialState.village };
 
     this.terrainSeed = initialState.terrainSeed ?? randomTerrainSeed();
-    this.terrainMap = generateTerrainMap(this.mapWidth, this.mapHeight, this.terrainSeed);
 
     this.buildingSystem.load(initialState.buildings);
     this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
@@ -122,6 +120,7 @@ export class WorldScene extends Phaser.Scene {
     this.foliagePaintSystem.renderLayer();
     this.createDayNightOverlay();
     this.preview = this.add.graphics();
+    this.preview.setDepth(1200);
     this.tweens.add({
       targets: this.preview,
       alpha: { from: 0.78, to: 1.0 },
@@ -194,6 +193,7 @@ export class WorldScene extends Phaser.Scene {
     const worldPixelsHeight = this.mapHeight * this.tileSize;
 
     const mainCamera = this.cameras.main;
+    mainCamera.roundPixels = true;
     mainCamera.setBounds(0, 0, worldPixelsWidth, worldPixelsHeight);
 
     this.cameraSystem = new CameraSystem(this, mainCamera, worldPixelsWidth, worldPixelsHeight);
@@ -291,15 +291,91 @@ export class WorldScene extends Phaser.Scene {
       this.groundLayer.destroy(true);
     }
     this.groundLayer = this.add.container(0, 0).setDepth(-1);
+    const mapPixelWidth = this.mapWidth * this.tileSize;
+    const mapPixelHeight = this.mapHeight * this.tileSize;
+    const grassKeys = ['env_grass_a', 'env_grass_b', 'env_grass_c', 'env_grass_d'].filter((key) =>
+      this.textures.exists(key),
+    );
+    const dirtKeys = ['env_dirt_a', 'env_dirt_b'].filter((key) => this.textures.exists(key));
+    const stoneKeys = ['env_stone_a', 'env_stone_b'].filter((key) => this.textures.exists(key));
+    const fallbackKey = this.textures.exists('terrain_grass_solid') ? 'terrain_grass_solid' : grassKeys[0];
+    const runtimeKey = 'terrain_ground_runtime';
+    const canvas = document.createElement('canvas');
+    canvas.width = mapPixelWidth;
+    canvas.height = mapPixelHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      const fallbackFill = this.add
+        .rectangle(0, 0, mapPixelWidth, mapPixelHeight, 0x6f9f55, 1)
+        .setOrigin(0);
+      this.groundLayer.add(fallbackFill);
+      return;
+    }
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#6f9f55';
+    ctx.fillRect(0, 0, mapPixelWidth, mapPixelHeight);
+
+    const pickKey = (keys: string[], hash: number): string | null => {
+      if (keys.length === 0) {
+        return null;
+      }
+      return keys[Math.abs(hash) % keys.length];
+    };
+
     for (let y = 0; y < this.mapHeight; y += 1) {
       for (let x = 0; x < this.mapWidth; x += 1) {
-        const world = gridToWorld(x, y, this.tileSize);
-        const key = this.terrainMap[y]?.[x] ?? 'terrain_grass_solid';
-        const tile = this.add.image(world.x, world.y, key).setOrigin(0);
-        tile.setDisplaySize(this.tileSize, this.tileSize);
-        this.groundLayer.add(tile);
+        const hash = (x * 73856093) ^ (y * 19349663) ^ this.terrainSeed;
+        const region =
+          Math.abs((Math.floor(x / 4) * 92821) ^ (Math.floor(y / 4) * 68917) ^ this.terrainSeed) % 100;
+        const micro = Math.abs(hash) % 100;
+
+        let key = pickKey(grassKeys, hash) ?? fallbackKey;
+        if (region > 76 && micro > 34) {
+          key = pickKey(dirtKeys, hash) ?? key;
+        }
+        if (region > 94 && micro > 52) {
+          key = pickKey(stoneKeys, hash) ?? key;
+        }
+
+        if (!key || !this.textures.exists(key)) {
+          continue;
+        }
+
+        const sourceTexture = this.textures.get(key);
+        const source = sourceTexture.getSourceImage() as CanvasImageSource & {
+          width?: number;
+          height?: number;
+        };
+        const sourceWidth = source?.width ?? 0;
+        const sourceHeight = source?.height ?? 0;
+        if (!sourceWidth || !sourceHeight) {
+          continue;
+        }
+
+        ctx.drawImage(
+          source,
+          0,
+          0,
+          sourceWidth,
+          sourceHeight,
+          x * this.tileSize,
+          y * this.tileSize,
+          this.tileSize,
+          this.tileSize,
+        );
       }
     }
+
+    if (this.textures.exists(runtimeKey)) {
+      this.textures.remove(runtimeKey);
+    }
+    (
+      this.textures as unknown as { addCanvas: (key: string, sourceCanvas: HTMLCanvasElement) => unknown }
+    ).addCanvas(runtimeKey, canvas);
+
+    const groundImage = this.add.image(0, 0, runtimeKey).setOrigin(0);
+    this.groundLayer.add(groundImage);
   }
 
   private drawNatureDecor(): void {
@@ -497,7 +573,6 @@ export class WorldScene extends Phaser.Scene {
     this.hoveredBuildingId = null;
 
     this.terrainSeed = randomTerrainSeed();
-    this.terrainMap = generateTerrainMap(this.mapWidth, this.mapHeight, this.terrainSeed);
     this.drawGround();
 
     this.buildingSystem.clear();
