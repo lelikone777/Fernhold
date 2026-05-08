@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ITEM_SPRITESHEET } from '../constants';
 import { BUILDING_LIST } from '../data/buildings';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
+import { MAP_CONFIG } from '../data/map';
 import {
   VILLAGER_FRAME_COUNT,
   VILLAGER_PALETTES,
@@ -10,7 +11,7 @@ import {
   VILLAGER_SPRITE_WIDTH,
   VILLAGER_WALK_FPS,
 } from '../data/villagers';
-import { registerTerrainTextures } from '../utils/terrainTextures';
+import { generateFullGroundCanvas, registerTerrainTextures } from '../utils/terrainTextures';
 import { createVillagerSpritesheetCanvas } from '../utils/villagerSprite';
 
 export class PreloadScene extends Phaser.Scene {
@@ -61,11 +62,23 @@ export class PreloadScene extends Phaser.Scene {
     this.createRoadRuntimeSheets();
     this.createGrassPlaceholderTexture();
     registerTerrainTextures(this);
+    this.registerFullGround();
     this.createFoliagePlaceholderTextures();
     this.createVillagerSpritesheets();
     this.createSmokeParticleTexture();
     this.scene.start('WorldScene');
     this.scene.launch('UIScene');
+  }
+
+  private registerFullGround(): void {
+    const key = 'terrain_ground_full';
+    if (this.textures.exists(key)) {
+      return;
+    }
+    const canvas = generateFullGroundCanvas(MAP_CONFIG.mapWidth, MAP_CONFIG.mapHeight, MAP_CONFIG.tileSize);
+    (this.textures as unknown as {
+      addCanvas: (key: string, source: HTMLCanvasElement) => unknown;
+    }).addCanvas(key, canvas);
   }
 
   private createSmokeParticleTexture(): void {
