@@ -18,6 +18,7 @@ export interface LoadedWorldState {
   foliageObjects: PlacedFoliage[];
   day: number;
   camera?: CameraState;
+  terrainSeed?: number;
 }
 
 export type WorldSavePayload = Omit<GameSaveData, 'version'>;
@@ -35,6 +36,7 @@ export class WorldPersistenceController {
       foliageObjects: save?.foliageObjects ?? [],
       day: save?.day ?? 1,
       camera: save?.camera,
+      terrainSeed: save?.terrainSeed,
     };
   }
 

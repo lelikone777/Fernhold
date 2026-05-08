@@ -31,6 +31,7 @@ import type {
 import { computeDayNightTint } from '../utils/dayNight';
 import { gridToWorld, worldToGrid } from '../utils/grid';
 import { resetIdCounters, setBuildingCounter } from '../utils/ids';
+import { generateTerrainMap, randomTerrainSeed, type TerrainKey } from '../utils/terrainGenerator';
 
 interface UiSnapshot {
   resources: Resources;
@@ -80,6 +81,9 @@ export class WorldScene extends Phaser.Scene {
   private readonly gridBounds = { width: MAP_CONFIG.mapWidth, height: MAP_CONFIG.mapHeight };
   private dayNightOverlay!: Phaser.GameObjects.Rectangle;
   private hoveredBuildingId: string | null = null;
+  private terrainSeed = 0;
+  private terrainMap: TerrainKey[][] = [];
+  private groundLayer!: Phaser.GameObjects.Container;
 
   constructor() {
     super('WorldScene');
@@ -91,6 +95,9 @@ export class WorldScene extends Phaser.Scene {
 
     this.resourceSystem = new ResourceSystem(initialState.resources);
     this.village = { ...initialState.village };
+
+    this.terrainSeed = initialState.terrainSeed ?? randomTerrainSeed();
+    this.terrainMap = generateTerrainMap(this.mapWidth, this.mapHeight, this.terrainSeed);
 
     this.buildingSystem.load(initialState.buildings);
     this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
@@ -280,10 +287,17 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private drawGround(): void {
+    if (this.groundLayer) {
+      this.groundLayer.destroy(true);
+    }
+    this.groundLayer = this.add.container(0, 0).setDepth(-1);
     for (let y = 0; y < this.mapHeight; y += 1) {
       for (let x = 0; x < this.mapWidth; x += 1) {
         const world = gridToWorld(x, y, this.tileSize);
-        this.add.image(world.x, world.y, 'terrain_grass_solid').setOrigin(0);
+        const key = this.terrainMap[y]?.[x] ?? 'terrain_grass_solid';
+        const tile = this.add.image(world.x, world.y, key).setOrigin(0);
+        tile.setDisplaySize(this.tileSize, this.tileSize);
+        this.groundLayer.add(tile);
       }
     }
   }
@@ -458,6 +472,7 @@ export class WorldScene extends Phaser.Scene {
       foliageObjects: this.foliagePaintSystem.serialize(),
       day: this.day,
       camera: this.getCameraState(),
+      terrainSeed: this.terrainSeed,
     });
   }
 
@@ -479,6 +494,11 @@ export class WorldScene extends Phaser.Scene {
       view.destroy();
     }
     this.buildingViews.clear();
+    this.hoveredBuildingId = null;
+
+    this.terrainSeed = randomTerrainSeed();
+    this.terrainMap = generateTerrainMap(this.mapWidth, this.mapHeight, this.terrainSeed);
+    this.drawGround();
 
     this.buildingSystem.clear();
     this.buildingSystem.load(starterBuildings);
