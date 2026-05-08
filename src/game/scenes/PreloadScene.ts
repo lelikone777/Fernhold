@@ -10,6 +10,7 @@ import {
   VILLAGER_SPRITE_WIDTH,
   VILLAGER_WALK_FPS,
 } from '../data/villagers';
+import { registerTerrainTextures } from '../utils/terrainTextures';
 import { createVillagerSpritesheetCanvas } from '../utils/villagerSprite';
 
 export class PreloadScene extends Phaser.Scene {
@@ -59,6 +60,7 @@ export class PreloadScene extends Phaser.Scene {
     this.stripRoadBackdrops();
     this.createRoadRuntimeSheets();
     this.createGrassPlaceholderTexture();
+    registerTerrainTextures(this);
     this.createFoliagePlaceholderTextures();
     this.createVillagerSpritesheets();
     this.createSmokeParticleTexture();

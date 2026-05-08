@@ -5,6 +5,7 @@ import { DEV_ROAD_ITEMS } from '../data/devRoads';
 import { EVENT_KEYS } from '../constants';
 import { createHud, type HudController } from '../../ui/hud';
 import type { BuildingAvailability, BuildingType, Resources, VillageState } from '../types/game';
+import { generateTerrainPreviewItems } from '../utils/terrainTextures';
 import { WorldScene } from './WorldScene';
 
 export class UIScene extends Phaser.Scene {
@@ -24,6 +25,7 @@ export class UIScene extends Phaser.Scene {
       buildingOptions: BUILDING_LIST,
       devFoliageItems: DEV_FOLIAGE_ITEMS,
       devRoadItems: DEV_ROAD_ITEMS,
+      terrainPreviewItems: generateTerrainPreviewItems(),
       onSelectBuilding: (type) => {
         this.game.events.emit(EVENT_KEYS.requestSelectBuilding, type);
       },

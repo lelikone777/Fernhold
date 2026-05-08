@@ -8,10 +8,19 @@ import type {
   VillageState,
 } from '../game/types/game';
 
+export interface TerrainPreviewItemInput {
+  key: string;
+  label: string;
+  description: string;
+  thumbnailUrl: string;
+  largePreviewUrl: string;
+}
+
 interface HudOptions {
   buildingOptions: BuildingDefinition[];
   devFoliageItems: DevFoliageDefinition[];
   devRoadItems: DevRoadDefinition[];
+  terrainPreviewItems?: TerrainPreviewItemInput[];
   onSelectBuilding: (type: BuildingType) => void;
   onSetBulldozeMode: (enabled: boolean) => void;
   onResetSave: () => void;
@@ -94,11 +103,9 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
       </div>
       <div class="dev-panel" data-panel="decor">
         <div class="dev-paint-section">
-          <span class="dev-paint-section-title">Decor</span>
-          <div class="dev-empty-state">
-            <strong>Slot reserved</strong>
-            <span>Add new rocks, fences, plants or props here later.</span>
-          </div>
+          <span class="dev-paint-section-title">Terrain Tiles</span>
+          <div class="terrain-preview-grid" data-terrain-grid></div>
+          <span class="dev-panel-hint">Procedurally generated 16×16 pixel tiles. Hover for an upscaled preview.</span>
         </div>
       </div>
       <button type="button" class="hud-button dev-erase" data-action="dev-erase">Erase</button>
@@ -341,6 +348,30 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     });
     devFoliageButtons.set(foliage.id, button);
     devFoliageGrid.appendChild(button);
+  }
+
+  const terrainGrid = root.querySelector<HTMLElement>('[data-terrain-grid]');
+  if (terrainGrid && options.terrainPreviewItems) {
+    for (const terrain of options.terrainPreviewItems) {
+      const card = document.createElement('div');
+      card.className = 'dev-paint-tile dev-building-tile terrain-card';
+      card.dataset.terrainKey = terrain.key;
+      card.title = terrain.description;
+      card.innerHTML = `
+        <div class="bld-card-icon terrain-card-icon">
+          <img class="terrain-thumb" alt="${terrain.label}" src="${terrain.thumbnailUrl}" />
+        </div>
+        <div class="bld-card-info">
+          <strong class="bld-card-name">${terrain.label}</strong>
+          <div class="bld-card-meta">
+            <span class="bld-card-size">16×16</span>
+            <span class="bld-card-hint">Tile</span>
+          </div>
+        </div>
+      `;
+      attachPreview(card, terrain.largePreviewUrl, `${terrain.label} — ${terrain.description}`);
+      terrainGrid.appendChild(card);
+    }
   }
 
   for (const road of options.devRoadItems) {

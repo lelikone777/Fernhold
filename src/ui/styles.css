@@ -628,6 +628,32 @@ body,
   overflow: visible;
 }
 
+.terrain-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+
+.terrain-card {
+  cursor: default;
+}
+
+.terrain-card-icon {
+  background: rgba(20, 26, 16, 0.9);
+  padding: 4px;
+}
+
+.terrain-thumb {
+  width: 44px;
+  height: 44px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-radius: 3px;
+  border: 1px solid rgba(216, 200, 156, 0.18);
+}
+
 @media (max-width: 960px) {
   .dev-paint {
     width: 262px;
