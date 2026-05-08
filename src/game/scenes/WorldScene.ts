@@ -280,6 +280,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.inputSystem = new InputSystem(this);
     this.inputSystem.bind();
+    this.inputSystem.setCanConfirmCallback(() => !this.cameraSystem.consumePointerUpSuppression());
     this.inputSystem.setPointerMoveCallback((pointer) => {
       this.updatePreview(pointer);
       this.updateBuildingHover(pointer);

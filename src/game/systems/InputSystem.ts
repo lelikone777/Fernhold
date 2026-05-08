@@ -2,12 +2,14 @@ import Phaser from 'phaser';
 
 type PointerCallback = (pointer: Phaser.Input.Pointer) => void;
 type CancelCallback = () => void;
+type ConfirmGuardCallback = (pointer: Phaser.Input.Pointer) => boolean;
 
 export class InputSystem {
   private readonly scene: Phaser.Scene;
   private onPointerMove?: PointerCallback;
   private onPointerConfirm?: PointerCallback;
   private onCancel?: CancelCallback;
+  private canConfirmPointer?: ConfirmGuardCallback;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -31,6 +33,10 @@ export class InputSystem {
     this.onCancel = callback;
   }
 
+  public setCanConfirmCallback(callback: ConfirmGuardCallback): void {
+    this.canConfirmPointer = callback;
+  }
+
   public destroy(): void {
     this.scene.input.off('pointermove', this.handlePointerMove, this);
     this.scene.input.off('pointerup', this.handlePointerUp, this);
@@ -43,6 +49,9 @@ export class InputSystem {
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
     if (pointer.button === 2) {
+      return;
+    }
+    if (this.canConfirmPointer && !this.canConfirmPointer(pointer)) {
       return;
     }
     this.onPointerConfirm?.(pointer);

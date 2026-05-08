@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
 import { CAMERA } from '../constants';
+import {
+  blendVelocity,
+  decayVelocity,
+  hasExceededDragThreshold,
+  toWorldDelta,
+} from '../utils/cameraNavigation';
 
 interface CameraKeys {
   w: Phaser.Input.Keyboard.Key;
@@ -13,14 +19,29 @@ interface CameraKeys {
 }
 
 export class CameraSystem {
+  private static readonly DRAG_THRESHOLD_PX = 8;
+  private static readonly VELOCITY_SMOOTHING = 0.35;
+  private static readonly MAX_PAN_VELOCITY = 2.4;
+  private static readonly FRICTION_PER_MS = 0.0038;
+  private static readonly MIN_VELOCITY = 0.005;
+
   private readonly scene: Phaser.Scene;
   private readonly camera: Phaser.Cameras.Scene2D.Camera;
   private readonly worldWidth: number;
   private readonly worldHeight: number;
   private keys?: CameraKeys;
+  private pointerDown = false;
   private dragging = false;
+  private activePointerId: number | null = null;
+  private pointerDownX = 0;
+  private pointerDownY = 0;
   private lastPointerX = 0;
   private lastPointerY = 0;
+  private lastMoveTimeMs: number | null = null;
+  private panVelocityX = 0;
+  private panVelocityY = 0;
+  private draggedThisGesture = false;
+  private suppressNextConfirm = false;
   private canStartDragViewport?: () => boolean;
 
   constructor(
@@ -63,27 +84,39 @@ export class CameraSystem {
   }
 
   public update(deltaMs: number): void {
-    if (!this.keys) {
-      return;
-    }
-
     const delta = deltaMs / 1000;
     const step = (CAMERA.speed * delta) / this.camera.zoom;
 
-    if (this.keys.left.isDown || this.keys.a.isDown) {
-      this.camera.scrollX -= step;
+    if (this.keys) {
+      if (this.keys.left.isDown || this.keys.a.isDown) {
+        this.camera.scrollX -= step;
+      }
+      if (this.keys.right.isDown || this.keys.d.isDown) {
+        this.camera.scrollX += step;
+      }
+      if (this.keys.up.isDown || this.keys.w.isDown) {
+        this.camera.scrollY -= step;
+      }
+      if (this.keys.down.isDown || this.keys.s.isDown) {
+        this.camera.scrollY += step;
+      }
     }
-    if (this.keys.right.isDown || this.keys.d.isDown) {
-      this.camera.scrollX += step;
-    }
-    if (this.keys.up.isDown || this.keys.w.isDown) {
-      this.camera.scrollY -= step;
-    }
-    if (this.keys.down.isDown || this.keys.s.isDown) {
-      this.camera.scrollY += step;
+
+    if (!this.pointerDown && (this.panVelocityX !== 0 || this.panVelocityY !== 0)) {
+      this.camera.scrollX -= this.panVelocityX * deltaMs;
+      this.camera.scrollY -= this.panVelocityY * deltaMs;
+      this.panVelocityX = decayVelocity(this.panVelocityX, deltaMs, {
+        frictionPerMs: CameraSystem.FRICTION_PER_MS,
+        minAbs: CameraSystem.MIN_VELOCITY,
+      });
+      this.panVelocityY = decayVelocity(this.panVelocityY, deltaMs, {
+        frictionPerMs: CameraSystem.FRICTION_PER_MS,
+        minAbs: CameraSystem.MIN_VELOCITY,
+      });
     }
 
     this.constrainCamera();
+    this.stopVelocityAtBounds();
   }
 
   public destroy(): void {
@@ -94,34 +127,101 @@ export class CameraSystem {
     this.scene.scale.off('resize', this.onResize, this);
   }
 
-  private onPointerDown(pointer: Phaser.Input.Pointer): void {
-    if (this.canStartDragViewport && !this.canStartDragViewport()) {
-      this.dragging = false;
-      return;
-    }
-    this.dragging = true;
-    this.lastPointerX = pointer.x;
-    this.lastPointerY = pointer.y;
+  public consumePointerUpSuppression(): boolean {
+    const shouldSuppress = this.suppressNextConfirm;
+    this.suppressNextConfirm = false;
+    return shouldSuppress;
   }
 
-  private onPointerUp(): void {
+  private onPointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.canStartDragViewport && !this.canStartDragViewport()) {
+      this.pointerDown = false;
+      this.dragging = false;
+      this.activePointerId = null;
+      return;
+    }
+
+    this.pointerDown = true;
     this.dragging = false;
+    this.draggedThisGesture = false;
+    this.activePointerId = pointer.id;
+    this.pointerDownX = pointer.x;
+    this.pointerDownY = pointer.y;
+    this.lastPointerX = pointer.x;
+    this.lastPointerY = pointer.y;
+    this.lastMoveTimeMs = this.getPointerTimeMs(pointer);
+    this.suppressNextConfirm = false;
+  }
+
+  private onPointerUp(pointer: Phaser.Input.Pointer): void {
+    if (this.activePointerId !== null && pointer.id !== this.activePointerId) {
+      return;
+    }
+    this.pointerDown = false;
+    this.dragging = false;
+    this.activePointerId = null;
+    this.lastMoveTimeMs = null;
+    this.suppressNextConfirm = this.draggedThisGesture;
+    if (!this.draggedThisGesture) {
+      this.panVelocityX = 0;
+      this.panVelocityY = 0;
+    }
+    this.draggedThisGesture = false;
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
-    if (!this.dragging) {
+    if (!this.pointerDown || (this.activePointerId !== null && pointer.id !== this.activePointerId)) {
       return;
     }
 
-    const deltaX = (pointer.x - this.lastPointerX) / this.camera.zoom;
-    const deltaY = (pointer.y - this.lastPointerY) / this.camera.zoom;
+    if (
+      !this.dragging &&
+      !hasExceededDragThreshold(
+        this.pointerDownX,
+        this.pointerDownY,
+        pointer.x,
+        pointer.y,
+        CameraSystem.DRAG_THRESHOLD_PX,
+      )
+    ) {
+      return;
+    }
+
+    if (!this.dragging) {
+      this.dragging = true;
+      this.draggedThisGesture = true;
+      this.lastPointerX = pointer.x;
+      this.lastPointerY = pointer.y;
+      this.lastMoveTimeMs = this.getPointerTimeMs(pointer);
+      this.panVelocityX = 0;
+      this.panVelocityY = 0;
+      return;
+    }
+
+    const deltaX = toWorldDelta(pointer.x - this.lastPointerX, this.camera.zoom);
+    const deltaY = toWorldDelta(pointer.y - this.lastPointerY, this.camera.zoom);
 
     this.camera.scrollX -= deltaX;
     this.camera.scrollY -= deltaY;
     this.constrainCamera();
+    this.stopVelocityAtBounds();
+
+    const nowMs = this.getPointerTimeMs(pointer);
+    const deltaMs = nowMs !== null && this.lastMoveTimeMs !== null
+      ? Math.max(1, Math.min(40, nowMs - this.lastMoveTimeMs))
+      : 16;
+    this.panVelocityX = blendVelocity(this.panVelocityX, deltaX, deltaMs, {
+      smoothing: CameraSystem.VELOCITY_SMOOTHING,
+      maxAbs: CameraSystem.MAX_PAN_VELOCITY,
+    });
+    this.panVelocityY = blendVelocity(this.panVelocityY, deltaY, deltaMs, {
+      smoothing: CameraSystem.VELOCITY_SMOOTHING,
+      maxAbs: CameraSystem.MAX_PAN_VELOCITY,
+    });
 
     this.lastPointerX = pointer.x;
     this.lastPointerY = pointer.y;
+    this.lastMoveTimeMs = nowMs;
   }
 
   private onWheel(
@@ -142,6 +242,14 @@ export class CameraSystem {
 
   private onResize(): void {
     this.constrainCamera();
+  }
+
+  private getPointerTimeMs(pointer: Phaser.Input.Pointer): number | null {
+    const candidate = (pointer as unknown as { event?: { timeStamp?: number } }).event?.timeStamp;
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
+      return null;
+    }
+    return candidate;
   }
 
   private getMinZoom(): number {
@@ -165,5 +273,24 @@ export class CameraSystem {
 
     this.camera.scrollX = Phaser.Math.Clamp(this.camera.scrollX, 0, maxScrollX);
     this.camera.scrollY = Phaser.Math.Clamp(this.camera.scrollY, 0, maxScrollY);
+  }
+
+  private stopVelocityAtBounds(): void {
+    const visibleWidth = this.camera.width / this.camera.zoom;
+    const visibleHeight = this.camera.height / this.camera.zoom;
+    const maxScrollX = Math.max(0, this.worldWidth - visibleWidth);
+    const maxScrollY = Math.max(0, this.worldHeight - visibleHeight);
+
+    if (this.camera.scrollX <= 0 && this.panVelocityX > 0) {
+      this.panVelocityX = 0;
+    } else if (this.camera.scrollX >= maxScrollX && this.panVelocityX < 0) {
+      this.panVelocityX = 0;
+    }
+
+    if (this.camera.scrollY <= 0 && this.panVelocityY > 0) {
+      this.panVelocityY = 0;
+    } else if (this.camera.scrollY >= maxScrollY && this.panVelocityY < 0) {
+      this.panVelocityY = 0;
+    }
   }
 }
