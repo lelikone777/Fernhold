@@ -2,6 +2,18 @@ import Phaser from 'phaser';
 import type { BuildingDefinition, PlacedBuilding } from '../types/game';
 import { gridToWorld } from '../utils/grid';
 
+const PRODUCTION_TYPES = new Set([
+  'lumber_mill_level_1',
+  'lumber_mill_level_2',
+  'lumber_mill_level_3',
+  'blacksmith_level_1',
+  'blacksmith_level_2',
+  'blacksmith_level_3',
+  'bakery',
+  'workshop',
+  'mason_yard',
+]);
+
 export const createBuildingView = (
   scene: Phaser.Scene,
   placed: PlacedBuilding,
@@ -32,5 +44,52 @@ export const createBuildingView = (
     children.push(fallback);
   }
 
-  return scene.add.container(worldPos.x, worldPos.y, children).setDepth(0.6);
+  if (PRODUCTION_TYPES.has(definition.type) && scene.textures.exists('smoke_particle')) {
+    const smoke = scene.add.particles(width * 0.5, height * 0.05, 'smoke_particle', {
+      lifespan: { min: 1100, max: 1700 },
+      speedY: { min: -22, max: -10 },
+      speedX: { min: -6, max: 6 },
+      scale: { start: 0.35, end: 1.1 },
+      alpha: { start: 0.42, end: 0 },
+      frequency: 380,
+      quantity: 1,
+      tint: definition.type.startsWith('blacksmith') ? [0x6a665e, 0x4a4640] : [0xd9d4c4, 0xa9a399],
+    });
+    smoke.setDepth(0.1);
+    children.push(smoke);
+  }
+
+  const container = scene.add.container(worldPos.x, worldPos.y, children).setDepth(0.6);
+  return container;
+};
+
+export const playPlaceTween = (
+  scene: Phaser.Scene,
+  view: Phaser.GameObjects.Container,
+): void => {
+  view.setScale(0.4);
+  view.setAlpha(0);
+  scene.tweens.add({
+    targets: view,
+    scale: 1,
+    alpha: 1,
+    ease: 'Back.easeOut',
+    duration: 320,
+  });
+};
+
+export const playDemolishTween = (
+  scene: Phaser.Scene,
+  view: Phaser.GameObjects.Container,
+  onComplete: () => void,
+): void => {
+  scene.tweens.add({
+    targets: view,
+    scale: 0.6,
+    alpha: 0,
+    y: view.y + 8,
+    ease: 'Quad.easeIn',
+    duration: 220,
+    onComplete,
+  });
 };

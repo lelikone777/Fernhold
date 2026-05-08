@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { DevPaintStateController } from '../controllers/DevPaintStateController';
 import { WorldPersistenceController } from '../controllers/WorldPersistenceController';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
-import { createBuildingView } from '../entities/Building';
+import { createBuildingView, playDemolishTween } from '../entities/Building';
 import { CAMERA, DAY_DURATION_MS, EVENT_KEYS } from '../constants';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 import { MAP_CONFIG } from '../data/map';
@@ -28,6 +28,7 @@ import type {
   Resources,
   VillageState,
 } from '../types/game';
+import { computeDayNightTint } from '../utils/dayNight';
 import { gridToWorld, worldToGrid } from '../utils/grid';
 import { resetIdCounters, setBuildingCounter } from '../utils/ids';
 
@@ -77,6 +78,7 @@ export class WorldScene extends Phaser.Scene {
 
   private readonly buildingViews = new Map<string, Phaser.GameObjects.Container>();
   private readonly gridBounds = { width: MAP_CONFIG.mapWidth, height: MAP_CONFIG.mapHeight };
+  private dayNightOverlay!: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super('WorldScene');
@@ -110,7 +112,16 @@ export class WorldScene extends Phaser.Scene {
     this.drawGrid();
     this.roadPaintSystem.renderLayer();
     this.foliagePaintSystem.renderLayer();
+    this.createDayNightOverlay();
     this.preview = this.add.graphics();
+    this.tweens.add({
+      targets: this.preview,
+      alpha: { from: 0.78, to: 1.0 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
     this.placementPreviewSystem = new PlacementPreviewSystem(
       this.preview,
       this.buildingSystem,
@@ -144,8 +155,11 @@ export class WorldScene extends Phaser.Scene {
           this.buildingViews.set(buildingId, view);
         },
         onBuildingRemoved: (buildingId) => {
-          this.buildingViews.get(buildingId)?.destroy();
+          const view = this.buildingViews.get(buildingId);
           this.buildingViews.delete(buildingId);
+          if (view) {
+            playDemolishTween(this, view, () => view.destroy());
+          }
         },
         emitResourcesChanged: () => {
           this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
@@ -230,6 +244,8 @@ export class WorldScene extends Phaser.Scene {
       this.dayElapsedMs = 0;
       this.advanceDay();
     }
+
+    this.updateDayNightOverlay();
 
     if (this.autosaveElapsedMs >= 2000 && !this.isPointerDown) {
       this.persistState();
@@ -607,6 +623,26 @@ export class WorldScene extends Phaser.Scene {
       parts.push(report.notes[0]);
     }
     this.emitToast(parts.join(' | '));
+  }
+
+  private createDayNightOverlay(): void {
+    const worldPixelsWidth = this.mapWidth * this.tileSize;
+    const worldPixelsHeight = this.mapHeight * this.tileSize;
+    this.dayNightOverlay = this.add
+      .rectangle(0, 0, worldPixelsWidth, worldPixelsHeight, 0x000018, 0)
+      .setOrigin(0)
+      .setDepth(900)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY);
+  }
+
+  private updateDayNightOverlay(): void {
+    if (!this.dayNightOverlay) {
+      return;
+    }
+    const t = (this.dayElapsedMs % DAY_DURATION_MS) / DAY_DURATION_MS;
+    const tint = computeDayNightTint(t);
+    this.dayNightOverlay.fillColor = tint.color;
+    this.dayNightOverlay.fillAlpha = tint.alpha;
   }
 
   private refreshBuildingAvailability(): void {

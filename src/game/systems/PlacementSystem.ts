@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { createBuildingView } from '../entities/Building';
+import { createBuildingView, playPlaceTween } from '../entities/Building';
 import { HUD_MESSAGES } from '../constants';
 import type { BuildingSystem } from './BuildingSystem';
 import type { EconomySystem } from './EconomySystem';
@@ -108,6 +108,7 @@ export class PlacementSystem {
       return;
     }
     const view = createBuildingView(this.scene, result.building, definition, ctx.tileSize);
+    playPlaceTween(this.scene, view);
     this.handlers.onBuildingPlaced(result.building.id, view);
     this.postChange(ctx, pointer);
     this.handlers.emitResourcesChanged();

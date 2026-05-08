@@ -61,8 +61,34 @@ export class PreloadScene extends Phaser.Scene {
     this.createGrassPlaceholderTexture();
     this.createFoliagePlaceholderTextures();
     this.createVillagerSpritesheets();
+    this.createSmokeParticleTexture();
     this.scene.start('WorldScene');
     this.scene.launch('UIScene');
+  }
+
+  private createSmokeParticleTexture(): void {
+    const key = 'smoke_particle';
+    if (this.textures.exists(key)) {
+      return;
+    }
+    const size = 16;
+    const radius = size / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+    const gradient = ctx.createRadialGradient(radius, radius, 0, radius, radius, radius);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.55, 'rgba(255, 255, 255, 0.55)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    (this.textures as unknown as {
+      addCanvas: (key: string, source: HTMLCanvasElement) => unknown;
+    }).addCanvas(key, canvas);
   }
 
   private createVillagerSpritesheets(): void {
