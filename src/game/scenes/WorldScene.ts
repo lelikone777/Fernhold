@@ -1,30 +1,30 @@
 import Phaser from 'phaser';
+import { DevPaintStateController } from '../controllers/DevPaintStateController';
+import { WorldPersistenceController } from '../controllers/WorldPersistenceController';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
-import { DEV_ROAD_ITEMS } from '../data/devRoads';
 import { createBuildingView } from '../entities/Building';
-import { CAMERA, DAY_DURATION_MS, EVENT_KEYS, HUD_MESSAGES } from '../constants';
+import { CAMERA, DAY_DURATION_MS, EVENT_KEYS } from '../constants';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 import { MAP_CONFIG } from '../data/map';
 import { INITIAL_RESOURCES, INITIAL_VILLAGE } from '../data/resources';
 import { BuildingSystem } from '../systems/BuildingSystem';
 import { CameraSystem } from '../systems/CameraSystem';
 import { EconomySystem } from '../systems/EconomySystem';
+import { FoliagePaintSystem } from '../systems/FoliagePaintSystem';
 import { InputSystem } from '../systems/InputSystem';
+import { PlacementPreviewSystem } from '../systems/PlacementPreviewSystem';
+import { PlacementSystem } from '../systems/PlacementSystem';
 import { ProgressionSystem } from '../systems/ProgressionSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
-import { SaveSystem } from '../systems/SaveSystem';
+import { RoadPaintSystem } from '../systems/RoadPaintSystem';
 import { VillagerSystem } from '../systems/VillagerSystem';
 import type {
-  BuildPlacementError,
   BuildingAvailability,
   BuildingType,
   CameraState,
   DayReport,
-  DevFoliageDefinition,
-  DevRoadDefinition,
-  PlacedFoliage,
   PlacedBuilding,
-  PlacedRoad,
+  RoadType,
   Resources,
   VillageState,
 } from '../types/game';
@@ -48,7 +48,8 @@ export class WorldScene extends Phaser.Scene {
   private readonly mapHeight = MAP_CONFIG.mapHeight;
   private readonly tileSize = MAP_CONFIG.tileSize;
 
-  private readonly saveSystem = new SaveSystem();
+  private readonly persistence = new WorldPersistenceController();
+  private readonly devPaintState = new DevPaintStateController();
   private readonly buildingSystem = new BuildingSystem();
   private readonly economySystem = new EconomySystem();
   private readonly progressionSystem = new ProgressionSystem();
@@ -59,30 +60,20 @@ export class WorldScene extends Phaser.Scene {
   private cameraSystem!: CameraSystem;
   private inputSystem!: InputSystem;
   private villagerSystem!: VillagerSystem;
+  private roadPaintSystem!: RoadPaintSystem;
+  private foliagePaintSystem!: FoliagePaintSystem;
+  private placementPreviewSystem!: PlacementPreviewSystem;
+  private placementSystem!: PlacementSystem;
   private preview!: Phaser.GameObjects.Graphics;
-  private readonly roadSprites = new Map<string, Phaser.GameObjects.Container>();
-  private readonly roads = new Map<string, PlacedRoad>();
-  private readonly foliageSprites = new Map<string, Phaser.GameObjects.Image>();
-  private readonly foliageObjects = new Map<string, PlacedFoliage>();
-  private readonly roadDefinitions = new Map<string, DevRoadDefinition>(
-    DEV_ROAD_ITEMS.map((item) => [item.id, item]),
-  );
-  private readonly foliageDefinitions = new Map<string, DevFoliageDefinition>(
-    DEV_FOLIAGE_ITEMS.map((item) => [item.id, item]),
-  );
 
   private selectedBuilding: BuildingType | null = null;
   private bulldozeMode = false;
-  private devPaintEnabled = false;
-  private selectedFoliageId: string | null = null;
-  private selectedRoadId: string | null = null;
   private day = 1;
   private autosaveElapsedMs = 0;
   private dayElapsedMs = 0;
   private isPointerDown = false;
   private roadStrokeAnchor: { x: number; y: number } | null = null;
   private roadStrokeAxis: 'x' | 'y' | null = null;
-  private roadLastPaintCell: { x: number; y: number } | null = null;
 
   private readonly buildingViews = new Map<string, Phaser.GameObjects.Container>();
   private readonly gridBounds = { width: MAP_CONFIG.mapWidth, height: MAP_CONFIG.mapHeight };
@@ -92,35 +83,41 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public create(): void {
-    const save = this.saveSystem.load();
     const starterBuildings = this.getStarterBuildings();
-    const initialBuildings = save?.buildings ?? starterBuildings;
+    const initialState = this.persistence.loadInitialState(starterBuildings);
 
-    this.resourceSystem = new ResourceSystem(save?.resources ?? INITIAL_RESOURCES);
-    this.village = { ...(save?.village ?? INITIAL_VILLAGE) };
+    this.resourceSystem = new ResourceSystem(initialState.resources);
+    this.village = { ...initialState.village };
 
-    this.buildingSystem.load(initialBuildings);
+    this.buildingSystem.load(initialState.buildings);
     this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
     setBuildingCounter(this.buildingSystem.getBuildings().length);
-    this.day = save?.day ?? 1;
+    this.day = initialState.day;
     this.refreshBuildingAvailability();
-    this.devPaintEnabled = Boolean(this.registry.get('devPaintAutostart'));
-    this.selectedFoliageId = this.devPaintEnabled ? DEV_FOLIAGE_ITEMS[0]?.id ?? null : null;
-    this.selectedRoadId = null;
+    this.devPaintState.setEnabled(
+      Boolean(this.registry.get('devPaintAutostart')),
+      DEV_FOLIAGE_ITEMS[0]?.id ?? null,
+    );
     this.registry.set('devPaintAutostart', false);
-    for (const road of save?.roads ?? []) {
-      this.roads.set(this.toGridKey(road.x, road.y), road);
-    }
-    for (const foliageObject of save?.foliageObjects ?? []) {
-      this.foliageObjects.set(this.toGridKey(foliageObject.x, foliageObject.y), foliageObject);
-    }
+
+    this.roadPaintSystem = new RoadPaintSystem(this, this.tileSize, this.mapWidth, this.mapHeight);
+    this.roadPaintSystem.load(initialState.roads);
+    this.foliagePaintSystem = new FoliagePaintSystem(this, this.tileSize, DEV_FOLIAGE_ITEMS);
+    this.foliagePaintSystem.load(initialState.foliageObjects);
 
     this.drawGround();
     this.drawNatureDecor();
     this.drawGrid();
-    this.renderRoadLayer();
-    this.renderFoliageLayer();
+    this.roadPaintSystem.renderLayer();
+    this.foliagePaintSystem.renderLayer();
     this.preview = this.add.graphics();
+    this.placementPreviewSystem = new PlacementPreviewSystem(
+      this.preview,
+      this.buildingSystem,
+      this.resourceSystem,
+      this.gridBounds,
+      (message) => this.emitToast(message),
+    );
     this.renderAllBuildings();
 
     this.villagerSystem = new VillagerSystem({
@@ -132,6 +129,39 @@ export class WorldScene extends Phaser.Scene {
       getBuildings: () => this.buildingSystem.getBuildings(),
     });
     this.villagerSystem.syncPopulation(this.village.population);
+    this.placementSystem = new PlacementSystem(
+      this,
+      this.buildingSystem,
+      this.resourceSystem,
+      this.economySystem,
+      this.villagerSystem,
+      {
+        updateVillage: (village) => {
+          this.village = village;
+        },
+        refreshBuildingAvailability: () => this.refreshBuildingAvailability(),
+        onBuildingPlaced: (buildingId, view) => {
+          this.buildingViews.set(buildingId, view);
+        },
+        onBuildingRemoved: (buildingId) => {
+          this.buildingViews.get(buildingId)?.destroy();
+          this.buildingViews.delete(buildingId);
+        },
+        emitResourcesChanged: () => {
+          this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
+        },
+        emitVillageChanged: () => {
+          this.game.events.emit(EVENT_KEYS.villageChanged, this.village);
+        },
+        emitAvailabilityChanged: () => {
+          this.game.events.emit(EVENT_KEYS.buildingAvailabilityChanged, this.buildingAvailability);
+        },
+        persistState: () => this.persistState(),
+        updatePreview: (pointer) => this.updatePreview(pointer),
+        emitToast: (message) => this.emitToast(message),
+        clearSelection: () => this.clearSelection(),
+      },
+    );
 
     const worldPixelsWidth = this.mapWidth * this.tileSize;
     const worldPixelsHeight = this.mapHeight * this.tileSize;
@@ -143,12 +173,12 @@ export class WorldScene extends Phaser.Scene {
     this.cameraSystem.setCanStartDragViewport(() => !this.isRoadPaintModeActive());
     this.cameraSystem.attach();
 
-    const initialZoom = save?.camera?.zoom ?? CAMERA.defaultZoom;
+    const initialZoom = initialState.camera?.zoom ?? CAMERA.defaultZoom;
     mainCamera.setZoom(initialZoom);
 
-    if (save?.camera) {
-      mainCamera.scrollX = save.camera.scrollX;
-      mainCamera.scrollY = save.camera.scrollY;
+    if (initialState.camera) {
+      mainCamera.scrollX = initialState.camera.scrollX;
+      mainCamera.scrollY = initialState.camera.scrollY;
     } else {
       mainCamera.centerOn(worldPixelsWidth * 0.5, worldPixelsHeight * 0.5);
     }
@@ -175,7 +205,7 @@ export class WorldScene extends Phaser.Scene {
         const gridPos = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
         this.roadStrokeAnchor = { x: gridPos.x, y: gridPos.y };
         this.roadStrokeAxis = null;
-        this.roadLastPaintCell = null;
+        this.roadPaintSystem.beginStroke();
         this.paintAtPointer(pointer, true);
       }
     });
@@ -183,7 +213,7 @@ export class WorldScene extends Phaser.Scene {
       this.isPointerDown = false;
       this.roadStrokeAnchor = null;
       this.roadStrokeAxis = null;
-      this.roadLastPaintCell = null;
+      this.roadPaintSystem.beginStroke();
     });
 
     this.bindUiEvents();
@@ -220,9 +250,9 @@ export class WorldScene extends Phaser.Scene {
       selectedBuilding: this.selectedBuilding,
       bulldozeMode: this.bulldozeMode,
       day: this.day,
-      devPaintEnabled: this.devPaintEnabled,
-      selectedFoliageId: this.selectedFoliageId,
-      selectedRoadId: this.selectedRoadId,
+      devPaintEnabled: this.devPaintState.getSnapshot().enabled,
+      selectedFoliageId: this.devPaintState.getSnapshot().selectedFoliageId,
+      selectedRoadId: this.devPaintState.getSnapshot().selectedRoadId,
     };
   }
 
@@ -283,10 +313,8 @@ export class WorldScene extends Phaser.Scene {
       this.emitToast(availability.reason ?? 'Building is locked');
       return;
     }
-    this.devPaintEnabled = false;
+    this.devPaintState.disable();
     this.bulldozeMode = false;
-    this.selectedFoliageId = null;
-    this.selectedRoadId = null;
     this.selectedBuilding = type;
     this.preview.clear();
     this.emitDevPaintState();
@@ -294,9 +322,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private handleSetBulldozeMode(enabled: boolean): void {
-    this.devPaintEnabled = false;
-    this.selectedFoliageId = null;
-    this.selectedRoadId = null;
+    this.devPaintState.disable();
     this.selectedBuilding = null;
     this.bulldozeMode = enabled;
     this.preview.clear();
@@ -309,14 +335,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private handleSetDevPaintEnabled(enabled: boolean): void {
-    this.devPaintEnabled = enabled;
-    if (enabled && this.selectedFoliageId === null && this.selectedRoadId === null) {
-      this.selectedFoliageId = DEV_FOLIAGE_ITEMS[0]?.id ?? null;
-    }
-    if (!enabled) {
-      this.selectedFoliageId = null;
-      this.selectedRoadId = null;
-    }
+    this.devPaintState.setEnabled(enabled, DEV_FOLIAGE_ITEMS[0]?.id ?? null);
     this.bulldozeMode = false;
     this.selectedBuilding = enabled ? null : this.selectedBuilding;
     this.preview.clear();
@@ -325,33 +344,27 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private handleSelectDevFoliage(foliageId: string): void {
-    this.devPaintEnabled = true;
+    this.devPaintState.selectFoliage(foliageId);
     this.selectedBuilding = null;
     this.bulldozeMode = false;
-    this.selectedFoliageId = foliageId;
-    this.selectedRoadId = null;
     this.preview.clear();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
 
   private handleSelectDevRoad(roadId: string): void {
-    this.devPaintEnabled = true;
+    this.devPaintState.selectRoad(roadId);
     this.selectedBuilding = null;
     this.bulldozeMode = false;
-    this.selectedFoliageId = null;
-    this.selectedRoadId = roadId;
     this.preview.clear();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
   }
 
   private handleEraseDevPaintTile(): void {
-    this.devPaintEnabled = true;
+    this.devPaintState.selectErase();
     this.selectedBuilding = null;
     this.bulldozeMode = false;
-    this.selectedFoliageId = null;
-    this.selectedRoadId = null;
     this.preview.clear();
     this.emitDevPaintState();
     this.game.events.emit(EVENT_KEYS.buildingSelectionChanged, this.selectedBuilding, this.bulldozeMode);
@@ -365,175 +378,39 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updatePreview(pointer: Phaser.Input.Pointer): void {
-    if (this.devPaintEnabled) {
-      const gridPos = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
-      const worldPos = gridToWorld(gridPos.x, gridPos.y, this.tileSize);
-      const color = this.selectedRoadId !== null ? 0xd3b06e : this.selectedFoliageId !== null ? 0x6fd4aa : 0xe0c37a;
-      this.preview.clear();
-      this.preview.fillStyle(color, 0.32);
-      this.preview.fillRect(worldPos.x, worldPos.y, this.tileSize, this.tileSize);
-      this.preview.lineStyle(2, color, 0.9);
-      this.preview.strokeRect(worldPos.x, worldPos.y, this.tileSize, this.tileSize);
-      return;
-    }
-
-    if (!this.selectedBuilding) {
-      if (this.bulldozeMode) {
-        const gridPos = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
-        const target = this.buildingSystem.getBuildingAt(gridPos.x, gridPos.y);
-        const worldPos = target ? gridToWorld(target.x, target.y, this.tileSize) : gridToWorld(gridPos.x, gridPos.y, this.tileSize);
-        const width = target ? BUILDING_DEFINITIONS[target.type].size.w * this.tileSize : this.tileSize;
-        const height = target ? BUILDING_DEFINITIONS[target.type].size.h * this.tileSize : this.tileSize;
-        this.preview.clear();
-        this.preview.fillStyle(target ? 0xc05555 : 0x8f6f53, 0.34);
-        this.preview.fillRect(worldPos.x, worldPos.y, width, height);
-        this.preview.lineStyle(2, target ? 0xf0b0b0 : 0xc49a68, 0.9);
-        this.preview.strokeRect(worldPos.x, worldPos.y, width, height);
-        return;
-      }
-      this.preview.clear();
-      return;
-    }
-
-    const gridPos = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
-    const definition = this.buildingSystem.getDefinition(this.selectedBuilding);
-    const availability = this.buildingAvailability[this.selectedBuilding];
-    if (availability && !availability.unlocked) {
-      this.emitToast(availability.reason ?? 'Building is locked');
-      this.clearSelection();
-      return;
-    }
-    const canAfford = this.resourceSystem.canAfford(definition.cost);
-    const placement = this.buildingSystem.canPlace(
-      this.selectedBuilding,
-      gridPos.x,
-      gridPos.y,
-      this.gridBounds,
+    const devPaintSnapshot = this.devPaintState.getSnapshot();
+    this.placementPreviewSystem.update(
+      pointer,
+      {
+        devPaintEnabled: devPaintSnapshot.enabled,
+        selectedRoadId: devPaintSnapshot.selectedRoadId,
+        selectedFoliageId: devPaintSnapshot.selectedFoliageId,
+        selectedBuilding: this.selectedBuilding,
+        bulldozeMode: this.bulldozeMode,
+        tileSize: this.tileSize,
+      },
+      {
+        buildingAvailability: this.buildingAvailability,
+        resources: this.resourceSystem.getResources(),
+      },
+      () => this.clearSelection(),
     );
-    const isValid = canAfford && placement.ok;
-
-    const worldPos = gridToWorld(gridPos.x, gridPos.y, this.tileSize);
-    const width = definition.size.w * this.tileSize;
-    const height = definition.size.h * this.tileSize;
-
-    this.preview.clear();
-    this.preview.fillStyle(isValid ? 0x61ad62 : 0xd05353, 0.4);
-    this.preview.fillRect(worldPos.x, worldPos.y, width, height);
-    this.preview.lineStyle(2, isValid ? 0x9ee29c : 0xf3c0c0, 0.9);
-    this.preview.strokeRect(worldPos.x, worldPos.y, width, height);
   }
 
   private tryPlaceSelected(pointer: Phaser.Input.Pointer): void {
-    if (this.devPaintEnabled) {
+    if (this.devPaintState.getSnapshot().enabled) {
       this.paintAtPointer(pointer);
       return;
     }
 
-    if (this.bulldozeMode) {
-      if (pointer.getDistance() > 10) {
-        return;
-      }
-      const gridPos = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
-      const removed = this.buildingSystem.removeAt(gridPos.x, gridPos.y);
-      if (!removed.ok || !removed.building) {
-        this.emitToast('Nothing to remove');
-        this.updatePreview(pointer);
-        return;
-      }
-      this.buildingViews.get(removed.building.id)?.destroy();
-      this.buildingViews.delete(removed.building.id);
-      this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
-      this.refreshBuildingAvailability();
-      this.villagerSystem?.reassignJobs();
-      this.game.events.emit(EVENT_KEYS.villageChanged, this.village);
-      this.game.events.emit(EVENT_KEYS.buildingAvailabilityChanged, this.buildingAvailability);
-      this.persistState();
-      this.updatePreview(pointer);
-      this.emitToast('Building removed');
-      return;
-    }
-
-    if (!this.selectedBuilding) {
-      return;
-    }
-
-    if (pointer.getDistance() > 10) {
-      return;
-    }
-
-    const gridPos = worldToGrid(pointer.worldX, pointer.worldY, this.tileSize);
-    const definition = this.buildingSystem.getDefinition(this.selectedBuilding);
-    const availability = this.buildingAvailability[this.selectedBuilding];
-
-    if (availability && !availability.unlocked) {
-      this.emitToast(availability.reason ?? 'Building is locked');
-      this.clearSelection();
-      return;
-    }
-
-    if (!this.resourceSystem.canAfford(definition.cost)) {
-      this.emitToast(HUD_MESSAGES.notEnoughResources);
-      this.updatePreview(pointer);
-      return;
-    }
-
-    const placement = this.buildingSystem.canPlace(
-      this.selectedBuilding,
-      gridPos.x,
-      gridPos.y,
-      this.gridBounds,
-    );
-    if (!placement.ok) {
-      this.emitPlacementError(placement.error);
-      this.updatePreview(pointer);
-      return;
-    }
-
-    const spent = this.resourceSystem.spend(definition.cost);
-    if (!spent) {
-      this.emitToast(HUD_MESSAGES.notEnoughResources);
-      return;
-    }
-
-    const result = this.buildingSystem.place(
-      this.selectedBuilding,
-      gridPos.x,
-      gridPos.y,
-      this.gridBounds,
-    );
-
-    if (!result.ok || !result.building) {
-      this.resourceSystem.add(definition.cost);
-      this.emitPlacementError(result.error);
-      return;
-    }
-
-    const view = createBuildingView(this, result.building, definition, this.tileSize);
-    this.buildingViews.set(result.building.id, view);
-
-    this.village = this.economySystem.syncVillage(this.buildingSystem.getBuildings(), this.village);
-    this.refreshBuildingAvailability();
-    this.villagerSystem?.reassignJobs();
-    this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
-    this.game.events.emit(EVENT_KEYS.villageChanged, this.village);
-    this.game.events.emit(EVENT_KEYS.buildingAvailabilityChanged, this.buildingAvailability);
-    this.persistState();
-    this.updatePreview(pointer);
-  }
-
-  private emitPlacementError(error?: BuildPlacementError): void {
-    if (!error) {
-      this.emitToast(HUD_MESSAGES.cannotBuild);
-      return;
-    }
-
-    const messages: Record<BuildPlacementError, string> = {
-      not_enough_resources: HUD_MESSAGES.notEnoughResources,
-      tile_occupied: HUD_MESSAGES.tileOccupied,
-      cannot_build_here: HUD_MESSAGES.cannotBuild,
-    };
-
-    this.emitToast(messages[error]);
+    this.placementSystem.tryPlace(pointer, {
+      selectedBuilding: this.selectedBuilding,
+      bulldozeMode: this.bulldozeMode,
+      tileSize: this.tileSize,
+      gridBounds: this.gridBounds,
+      buildingAvailability: this.buildingAvailability,
+      village: this.village,
+    });
   }
 
   private emitToast(message: string): void {
@@ -550,12 +427,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private persistState(): void {
-    this.saveSystem.save({
+    this.persistence.saveState({
       resources: this.resourceSystem.getResources(),
       village: this.village,
       buildings: this.buildingSystem.getBuildings(),
-      roads: [...this.roads.values()],
-      foliageObjects: [...this.foliageObjects.values()],
+      roads: this.roadPaintSystem.serialize(),
+      foliageObjects: this.foliagePaintSystem.serialize(),
       day: this.day,
       camera: this.getCameraState(),
     });
@@ -571,7 +448,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private resetGameState(): void {
-    this.saveSystem.clear();
+    this.persistence.clearSave();
     resetIdCounters();
     const starterBuildings = this.getStarterBuildings();
 
@@ -582,8 +459,8 @@ export class WorldScene extends Phaser.Scene {
 
     this.buildingSystem.clear();
     this.buildingSystem.load(starterBuildings);
-    this.clearRoadLayer();
-    this.clearFoliageLayer();
+    this.roadPaintSystem.clear();
+    this.foliagePaintSystem.clear();
     this.villagerSystem?.clear();
     this.resourceSystem.setResources(INITIAL_RESOURCES);
     this.village = this.economySystem.syncVillage(starterBuildings, { ...INITIAL_VILLAGE });
@@ -619,191 +496,48 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    const key = this.toGridKey(gridPos.x, gridPos.y);
-    if (this.selectedRoadId !== null) {
-      const roadDefinition = this.roadDefinitions.get(this.selectedRoadId);
-      if (!roadDefinition) {
-        return;
-      }
-
+    const devPaintSnapshot = this.devPaintState.getSnapshot();
+    if (devPaintSnapshot.selectedRoadId !== null) {
       const constrained = this.getConstrainedRoadCell(gridPos);
-      this.paintRoadSegment(constrained.x, constrained.y, roadDefinition.id);
+      this.roadPaintSystem.paintSegment(
+        constrained.x,
+        constrained.y,
+        devPaintSnapshot.selectedRoadId as RoadType,
+      );
       this.persistState();
       return;
     }
 
-    if (this.selectedFoliageId !== null) {
-      const foliageDefinition = this.foliageDefinitions.get(this.selectedFoliageId);
-      if (!foliageDefinition) {
+    if (devPaintSnapshot.selectedFoliageId !== null) {
+      const placed = this.foliagePaintSystem.place(
+        devPaintSnapshot.selectedFoliageId,
+        gridPos.x,
+        gridPos.y,
+      );
+      if (!placed) {
         return;
       }
-
-      const foliage: PlacedFoliage = {
-        id: `${this.selectedFoliageId}_${gridPos.x}_${gridPos.y}`,
-        foliageId: foliageDefinition.id,
-        x: gridPos.x,
-        y: gridPos.y,
-      };
-      this.foliageObjects.set(key, foliage);
-      this.renderFoliageObject(foliage);
       this.persistState();
       return;
     }
 
-    this.removeRoadTile(key);
-    this.removeFoliageObject(key);
+    this.roadPaintSystem.removeAt(gridPos.x, gridPos.y);
+    this.foliagePaintSystem.removeAt(gridPos.x, gridPos.y);
     this.persistState();
   }
 
-  private renderRoadLayer(): void {
-    for (const road of this.roads.values()) {
-      this.renderRoadTile(road);
-    }
-  }
-
-  private renderFoliageLayer(): void {
-    for (const foliage of this.foliageObjects.values()) {
-      this.renderFoliageObject(foliage);
-    }
-  }
-
-  private renderRoadTile(road: PlacedRoad): void {
-    const roadKey = this.toGridKey(road.x, road.y);
-    this.roadSprites.get(roadKey)?.destroy();
-
-    const neighbors = this.getRoadNeighbors(road.x, road.y, road.roadId);
-    const textureKey = this.getRoadTextureKey(road.roadId);
-    if (!textureKey) {
-      return;
-    }
-
-    const world = gridToWorld(road.x, road.y, this.tileSize);
-    const centerX = world.x + this.tileSize * 0.5;
-    const centerY = world.y + this.tileSize * 0.5;
-    const style = this.getRoadBaseStyle(road.roadId);
-
-    const background = this.add.graphics();
-    const roadShape = this.add.graphics();
-    const maskShape = this.add.graphics();
-
-    background.fillStyle(style.shadow, 0.2);
-    background.fillEllipse(centerX, centerY + 1, this.tileSize * 0.92, this.tileSize * 0.6);
-
-    this.drawRoadShape(roadShape, world.x, world.y, neighbors, style.edge, style.innerWidth + 2, style.capInset + 1);
-    this.drawRoadShape(roadShape, world.x, world.y, neighbors, style.base, style.innerWidth, style.capInset);
-    this.drawRoadShape(maskShape, world.x, world.y, neighbors, 0xffffff, style.innerWidth + 1, style.capInset);
-    maskShape.setVisible(false);
-
-    const textureFrame = this.getRoadTextureOverlayFrame(neighbors);
-    const children: Phaser.GameObjects.GameObject[] = [background, roadShape];
-    if (textureFrame !== null) {
-      const texture = this.add.image(centerX, centerY, textureKey, textureFrame).setOrigin(0.5);
-      texture.setDisplaySize(this.tileSize + 4, this.tileSize + 4);
-      texture.setAlpha(0.55);
-      texture.setMask(maskShape.createGeometryMask());
-      children.push(texture);
-    }
-    children.push(maskShape);
-
-    const container = this.add.container(0, 0, children);
-    container.setDepth(0.35);
-    this.roadSprites.set(roadKey, container);
-  }
-
-  private renderFoliageObject(foliage: PlacedFoliage): void {
-    const definition = this.foliageDefinitions.get(foliage.foliageId);
-    if (!definition) {
-      return;
-    }
-
-    const key = this.toGridKey(foliage.x, foliage.y);
-    this.foliageSprites.get(key)?.destroy();
-    const world = gridToWorld(foliage.x, foliage.y, this.tileSize);
-    const sprite = this.add
-      .image(world.x + this.tileSize * 0.5, world.y + this.tileSize, definition.textureKey)
-      .setOrigin(0.5, 1);
-    sprite.setDepth(0.75);
-    this.foliageSprites.set(key, sprite);
-  }
-
-  private removeFoliageObject(key: string): void {
-    this.foliageObjects.delete(key);
-    this.foliageSprites.get(key)?.destroy();
-    this.foliageSprites.delete(key);
-  }
-
-  private removeRoadTile(key: string): void {
-    const road = this.roads.get(key);
-    this.roads.delete(key);
-    this.roadSprites.get(key)?.destroy();
-    this.roadSprites.delete(key);
-    if (road) {
-      this.refreshAdjacentRoads(road.x, road.y);
-    }
-  }
-
-  private clearRoadLayer(): void {
-    for (const sprite of this.roadSprites.values()) {
-      sprite.destroy();
-    }
-    this.roadSprites.clear();
-    this.roads.clear();
-  }
-
-  private clearFoliageLayer(): void {
-    for (const sprite of this.foliageSprites.values()) {
-      sprite.destroy();
-    }
-    this.foliageSprites.clear();
-    this.foliageObjects.clear();
-  }
-
   private emitDevPaintState(): void {
+    const snapshot = this.devPaintState.getSnapshot();
     this.game.events.emit(
       EVENT_KEYS.devPaintStateChanged,
-      this.devPaintEnabled,
-      this.selectedFoliageId,
-      this.selectedRoadId,
+      snapshot.enabled,
+      snapshot.selectedFoliageId,
+      snapshot.selectedRoadId,
     );
   }
 
-  private toGridKey(x: number, y: number): string {
-    return `${x}:${y}`;
-  }
-
   private isRoadPaintModeActive(): boolean {
-    return this.devPaintEnabled && this.selectedRoadId !== null;
-  }
-
-  private refreshRoadAt(x: number, y: number): void {
-    const road = this.roads.get(this.toGridKey(x, y));
-    if (road) {
-      this.renderRoadTile(road);
-    }
-    this.refreshAdjacentRoads(x, y);
-  }
-
-  private refreshAdjacentRoads(x: number, y: number): void {
-    for (const [dx, dy] of [
-      [0, -1],
-      [0, 1],
-      [-1, 0],
-      [1, 0],
-    ]) {
-      const neighbor = this.roads.get(this.toGridKey(x + dx, y + dy));
-      if (neighbor) {
-        this.renderRoadTile(neighbor);
-      }
-    }
-  }
-
-  private getRoadNeighbors(x: number, y: number, roadId: string): Record<'up' | 'down' | 'left' | 'right', boolean> {
-    return {
-      up: this.roads.get(this.toGridKey(x, y - 1))?.roadId === roadId,
-      down: this.roads.get(this.toGridKey(x, y + 1))?.roadId === roadId,
-      left: this.roads.get(this.toGridKey(x - 1, y))?.roadId === roadId,
-      right: this.roads.get(this.toGridKey(x + 1, y))?.roadId === roadId,
-    };
+    return this.devPaintState.isRoadPaintModeActive();
   }
 
   private getConstrainedRoadCell(gridPos: { x: number; y: number }): { x: number; y: number } {
@@ -825,155 +559,6 @@ export class WorldScene extends Phaser.Scene {
       return { x: this.roadStrokeAnchor.x, y: gridPos.y };
     }
     return gridPos;
-  }
-
-  private paintRoadSegment(x: number, y: number, roadId: PlacedRoad['roadId']): void {
-    const put = (tileX: number, tileY: number): void => {
-      if (tileX < 0 || tileY < 0 || tileX >= this.mapWidth || tileY >= this.mapHeight) {
-        return;
-      }
-      const tileKey = this.toGridKey(tileX, tileY);
-      const road: PlacedRoad = {
-        id: `${roadId}_${tileX}_${tileY}`,
-        roadId,
-        x: tileX,
-        y: tileY,
-      };
-      this.roads.set(tileKey, road);
-      this.refreshRoadAt(tileX, tileY);
-    };
-
-    if (!this.roadLastPaintCell) {
-      put(x, y);
-      this.roadLastPaintCell = { x, y };
-      return;
-    }
-
-    const from = this.roadLastPaintCell;
-    const dx = x - from.x;
-    const dy = y - from.y;
-    if (dx !== 0 && dy !== 0) {
-      // Should not happen with axis lock; keep safe fallback.
-      put(x, y);
-      this.roadLastPaintCell = { x, y };
-      return;
-    }
-
-    const stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
-    const stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
-    let cx = from.x;
-    let cy = from.y;
-    while (cx !== x || cy !== y) {
-      cx += stepX;
-      cy += stepY;
-      put(cx, cy);
-    }
-    this.roadLastPaintCell = { x, y };
-  }
-
-  private getRoadTextureKey(roadId: string): string | null {
-    switch (roadId) {
-      case 'dirt_path':
-        return 'road_dirt_tiles_runtime';
-      case 'stone_path':
-        return 'road_stone_tiles_runtime';
-      case 'cobble_path':
-        return 'road_cobble_tiles_runtime';
-      default:
-        return null;
-    }
-  }
-
-  private getRoadTextureOverlayFrame(
-    neighbors: Record<'up' | 'down' | 'left' | 'right', boolean>,
-  ): number | null {
-    const U = neighbors.up ? 1 : 0;
-    const R = neighbors.right ? 1 : 0;
-    const D = neighbors.down ? 1 : 0;
-    const L = neighbors.left ? 1 : 0;
-    const mask = U | (R << 1) | (D << 2) | (L << 3);
-
-    switch (mask) {
-      case 0:
-        return 0;
-      case 1:
-      case 4:
-        return 2;
-      case 2:
-      case 8:
-        return 1;
-      case 5:
-        return 2;
-      case 10:
-        return 1;
-      case 3:
-      case 6:
-      case 12:
-      case 9:
-      case 7:
-      case 14:
-      case 13:
-      case 11:
-      case 15:
-        return 12;
-      default:
-        return 12;
-    }
-  }
-
-  private drawRoadShape(
-    graphics: Phaser.GameObjects.Graphics,
-    worldX: number,
-    worldY: number,
-    neighbors: Record<'up' | 'down' | 'left' | 'right', boolean>,
-    color: number,
-    width: number,
-    capInset: number,
-  ): void {
-    const centerX = worldX + this.tileSize * 0.5;
-    const centerY = worldY + this.tileSize * 0.5;
-    const halfWidth = width * 0.5;
-    const left = centerX - halfWidth;
-    const top = centerY - halfWidth;
-    const extendLeft = neighbors.left ? worldX - 1 : worldX + capInset;
-    const extendRight = neighbors.right ? worldX + this.tileSize + 1 : worldX + this.tileSize - capInset;
-    const extendUp = neighbors.up ? worldY - 1 : worldY + capInset;
-    const extendDown = neighbors.down ? worldY + this.tileSize + 1 : worldY + this.tileSize - capInset;
-
-    graphics.fillStyle(color, 1);
-    graphics.fillRoundedRect(left, top, width, width, Math.max(2, width * 0.28));
-
-    if (neighbors.up) {
-      graphics.fillRect(left, extendUp, width, centerY - extendUp);
-    }
-    if (neighbors.down) {
-      graphics.fillRect(left, centerY, width, extendDown - centerY);
-    }
-    if (neighbors.left) {
-      graphics.fillRect(extendLeft, top, centerX - extendLeft, width);
-    }
-    if (neighbors.right) {
-      graphics.fillRect(centerX, top, extendRight - centerX, width);
-    }
-
-    if (!neighbors.up && !neighbors.down && !neighbors.left && !neighbors.right) {
-      graphics.fillCircle(centerX, centerY, halfWidth + 1);
-    }
-  }
-
-  private getRoadBaseStyle(
-    roadId: string,
-  ): { base: number; edge: number; shadow: number; innerWidth: number; capInset: number } {
-    switch (roadId) {
-      case 'dirt_path':
-        return { base: 0x8e6a43, edge: 0x6d4d2f, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
-      case 'stone_path':
-        return { base: 0x8f8d87, edge: 0x6b6a66, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
-      case 'cobble_path':
-        return { base: 0x9f9987, edge: 0x756f62, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
-      default:
-        return { base: 0x8f8d87, edge: 0x6b6a66, shadow: 0x2f2418, innerWidth: 10, capInset: 3 };
-    }
   }
 
   private getStarterBuildings(): PlacedBuilding[] {
