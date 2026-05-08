@@ -11,7 +11,7 @@ import {
   VILLAGER_SPRITE_WIDTH,
   VILLAGER_WALK_FPS,
 } from '../data/villagers';
-import { generateFullGroundCanvas, registerTerrainTextures } from '../utils/terrainTextures';
+import { registerTerrainTextures } from '../utils/terrainTextures';
 import { createVillagerSpritesheetCanvas } from '../utils/villagerSprite';
 
 export class PreloadScene extends Phaser.Scene {
@@ -51,6 +51,8 @@ export class PreloadScene extends Phaser.Scene {
       frameHeight: 256,
     });
 
+    this.load.image('grass_source', 'assets/visual/environment/grass_1.png');
+
     for (const building of BUILDING_LIST) {
       this.load.image(`building_sprite_${building.type}`, building.spritePath);
     }
@@ -75,7 +77,39 @@ export class PreloadScene extends Phaser.Scene {
     if (this.textures.exists(key)) {
       return;
     }
-    const canvas = generateFullGroundCanvas(MAP_CONFIG.mapWidth, MAP_CONFIG.mapHeight, MAP_CONFIG.tileSize);
+
+    const source = this.textures.get('grass_source').getSourceImage() as HTMLImageElement;
+    const sw = source.width;
+    const sh = source.height;
+
+    const side = Math.min(sw, sh);
+    const inset = side * 0.15;
+    const cropSize = Math.floor(side - inset * 2);
+    const cropX = Math.floor((sw - cropSize) / 2);
+    const cropY = Math.floor((sh - cropSize) / 2);
+    const cropW = cropSize;
+    const cropH = cropSize;
+
+    const patternSize = 64;
+    const tileCanvas = document.createElement('canvas');
+    tileCanvas.width = patternSize;
+    tileCanvas.height = patternSize;
+    const tileCtx = tileCanvas.getContext('2d')!;
+    tileCtx.imageSmoothingEnabled = false;
+    tileCtx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, patternSize, patternSize);
+
+    const totalW = MAP_CONFIG.mapWidth * MAP_CONFIG.tileSize;
+    const totalH = MAP_CONFIG.mapHeight * MAP_CONFIG.tileSize;
+    const canvas = document.createElement('canvas');
+    canvas.width = totalW;
+    canvas.height = totalH;
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+
+    const pattern = ctx.createPattern(tileCanvas, 'repeat')!;
+    ctx.fillStyle = pattern;
+    ctx.fillRect(0, 0, totalW, totalH);
+
     (this.textures as unknown as {
       addCanvas: (key: string, source: HTMLCanvasElement) => unknown;
     }).addCanvas(key, canvas);
