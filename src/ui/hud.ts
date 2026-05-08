@@ -104,6 +104,10 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
       <button type="button" class="hud-button dev-erase" data-action="dev-erase">Erase</button>
     </div>
     <div class="hud-toast" data-toast aria-live="polite"></div>
+    <div class="hud-preview" data-preview aria-hidden="true">
+      <img class="hud-preview-img" alt="" />
+      <div class="hud-preview-caption" data-preview-caption></div>
+    </div>
   `;
 
   const woodEl = root.querySelector<HTMLElement>('[data-res="wood"]');
@@ -127,6 +131,9 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   const bulldozeButton = root.querySelector<HTMLButtonElement>('[data-action="bulldoze"]');
   const toastEl = root.querySelector<HTMLElement>('[data-toast]');
   const resetButton = root.querySelector<HTMLButtonElement>('[data-action="reset"]');
+  const previewEl = root.querySelector<HTMLElement>('[data-preview]');
+  const previewImgEl = previewEl?.querySelector<HTMLImageElement>('.hud-preview-img') ?? null;
+  const previewCaptionEl = root.querySelector<HTMLElement>('[data-preview-caption]');
 
   if (
     !woodEl ||
@@ -149,10 +156,44 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     !devEraseButton ||
     !bulldozeButton ||
     !toastEl ||
-    !resetButton
+    !resetButton ||
+    !previewEl ||
+    !previewImgEl ||
+    !previewCaptionEl
   ) {
     throw new Error('HUD layout is incomplete');
   }
+
+  const attachPreview = (
+    target: HTMLElement,
+    imageSrc: string,
+    caption: string,
+    pixelArt = true,
+  ): void => {
+    const show = (): void => {
+      previewImgEl.src = imageSrc;
+      previewImgEl.classList.toggle('is-pixel', pixelArt);
+      previewCaptionEl.textContent = caption;
+      const rect = target.getBoundingClientRect();
+      const previewWidth = 220;
+      const margin = 12;
+      let left = rect.right + margin;
+      if (left + previewWidth > window.innerWidth - 8) {
+        left = rect.left - previewWidth - margin;
+      }
+      const top = Math.max(8, Math.min(rect.top, window.innerHeight - 260));
+      previewEl.style.left = `${left}px`;
+      previewEl.style.top = `${top}px`;
+      previewEl.classList.add('is-visible');
+    };
+    const hide = (): void => {
+      previewEl.classList.remove('is-visible');
+    };
+    target.addEventListener('mouseenter', show);
+    target.addEventListener('mouseleave', hide);
+    target.addEventListener('focus', show);
+    target.addEventListener('blur', hide);
+  };
 
   const devBuildingButtons = new Map<BuildingType, HTMLButtonElement>();
   const devFoliageButtons = new Map<string, HTMLButtonElement>();
@@ -165,56 +206,92 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   let toastTimer: number | null = null;
   let activeTab = 'trees';
   const groupedBuildings = groupBuildings(options.buildingOptions);
-  for (const group of groupedBuildings) {
-    if (group.variants.length === 1) {
-      const building = group.variants[0];
-      const devButton = createBuildingTileButton(building);
-      devBuildingButtons.set(building.type, devButton);
-      devBuildingsGrid.appendChild(devButton);
+  const categorized = groupByCategory(groupedBuildings);
+  for (const category of CATEGORY_ORDER) {
+    const groups = categorized.get(category);
+    if (!groups || groups.length === 0) {
       continue;
     }
+    const section = document.createElement('div');
+    section.className = 'building-category';
+    section.dataset.category = category;
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'building-group';
-    wrapper.dataset.groupId = group.id;
-    const head = document.createElement('button');
-    head.type = 'button';
-    head.className = 'dev-paint-tile dev-building-tile building-group-head';
-    head.dataset.groupId = group.id;
-    head.innerHTML = `
-      <img class="build-icon" alt="${group.label}" />
-      <span class="dev-paint-label">
-        <strong>${group.label}</strong>
-        <small>Levels</small>
-      </span>
+    const header = document.createElement('div');
+    header.className = 'building-category-head';
+    header.innerHTML = `
+      <span class="building-category-icon">${CATEGORY_META[category].icon}</span>
+      <span class="building-category-title">${CATEGORY_META[category].label}</span>
     `;
-    const headIcon = head.querySelector<HTMLImageElement>('.build-icon');
-    if (headIcon) {
-      bindImageFallback(headIcon, [group.variants[0].spritePath]);
-    }
-    head.addEventListener('click', () => {
-      if (openBuildingGroups.has(group.id)) {
-        openBuildingGroups.delete(group.id);
-      } else {
-        openBuildingGroups.add(group.id);
+    section.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'building-category-grid';
+    for (const group of groups) {
+      if (group.variants.length === 1) {
+        const building = group.variants[0];
+        const devButton = createBuildingTileButton(building);
+        devBuildingButtons.set(building.type, devButton);
+        grid.appendChild(devButton);
+        continue;
       }
-      syncBuildingGroups();
-    });
 
-    const panel = document.createElement('div');
-    panel.className = 'building-level-list';
-    panel.dataset.groupId = group.id;
-    for (const building of group.variants) {
-      buildingGroupsByType.set(building.type, group.id);
-      const tile = createBuildingTileButton(building, `Level ${extractLevel(building.type)}`);
-      devBuildingButtons.set(building.type, tile);
-      panel.appendChild(tile);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'building-group';
+      wrapper.dataset.groupId = group.id;
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'dev-paint-tile dev-building-tile building-group-head';
+      head.dataset.groupId = group.id;
+      const totalLevels = group.variants.length;
+      head.innerHTML = `
+        <div class="bld-card-icon">
+          <img class="build-icon" alt="${group.label}" />
+          <span class="bld-card-level-badge">×${totalLevels}</span>
+        </div>
+        <div class="bld-card-info">
+          <strong class="bld-card-name">${group.label}</strong>
+          <span class="bld-card-meta">
+            <span class="bld-card-stars">${renderStars(totalLevels)}</span>
+            <span class="bld-card-hint">Levels ▾</span>
+          </span>
+        </div>
+      `;
+      const headIcon = head.querySelector<HTMLImageElement>('.build-icon');
+      if (headIcon) {
+        bindImageFallback(headIcon, [group.variants[0].spritePath]);
+      }
+      attachPreview(
+        head,
+        group.variants[0].spritePath,
+        `${group.label} · ${group.variants.length} levels`,
+      );
+      head.addEventListener('click', () => {
+        if (openBuildingGroups.has(group.id)) {
+          openBuildingGroups.delete(group.id);
+        } else {
+          openBuildingGroups.add(group.id);
+        }
+        syncBuildingGroups();
+      });
+
+      const panel = document.createElement('div');
+      panel.className = 'building-level-list';
+      panel.dataset.groupId = group.id;
+      for (const building of group.variants) {
+        buildingGroupsByType.set(building.type, group.id);
+        const level = extractLevel(building.type);
+        const tile = createBuildingTileButton(building, undefined, level);
+        devBuildingButtons.set(building.type, tile);
+        panel.appendChild(tile);
+      }
+
+      wrapper.append(head, panel);
+      buildingGroupButtons.set(group.id, head);
+      buildingGroupPanels.set(group.id, panel);
+      grid.appendChild(wrapper);
     }
-
-    wrapper.append(head, panel);
-    buildingGroupButtons.set(group.id, head);
-    buildingGroupPanels.set(group.id, panel);
-    devBuildingsGrid.appendChild(wrapper);
+    section.appendChild(grid);
+    devBuildingsGrid.appendChild(section);
   }
 
   resetButton.addEventListener('click', () => {
@@ -269,19 +346,26 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   for (const road of options.devRoadItems) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'dev-paint-tile dev-road-tile';
+    button.className = 'dev-paint-tile dev-road-tile dev-building-tile';
     button.title = road.name;
     button.dataset.roadId = road.id;
     button.innerHTML = `
-      <span class="dev-paint-swatch"></span>
-      <span class="dev-paint-label">${road.name}</span>
+      <div class="bld-card-icon road-card-icon">
+        <span class="road-thumb"></span>
+      </div>
+      <div class="bld-card-info">
+        <strong class="bld-card-name">${road.name}</strong>
+        <div class="bld-card-meta">
+          <span class="bld-card-size">1×1</span>
+          <span class="bld-card-hint">Paint</span>
+        </div>
+      </div>
     `;
-    const swatch = button.querySelector<HTMLElement>('.dev-paint-swatch');
-    if (swatch) {
-      swatch.style.backgroundImage = `url('${road.swatchImage}')`;
-      swatch.style.backgroundSize = 'cover';
-      swatch.style.backgroundPosition = 'center';
+    const thumb = button.querySelector<HTMLElement>('.road-thumb');
+    if (thumb) {
+      thumb.style.backgroundImage = `url('${road.swatchImage}')`;
     }
+    attachPreview(button, road.swatchImage, `${road.name} · tilesheet preview`);
     button.addEventListener('click', () => {
       options.onSelectDevRoad(road.id);
     });
@@ -421,24 +505,56 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     destroy,
   };
 
-  function createBuildingTileButton(building: BuildingDefinition, captionOverride?: string): HTMLButtonElement {
+  function createBuildingTileButton(
+    building: BuildingDefinition,
+    captionOverride?: string,
+    level?: number,
+  ): HTMLButtonElement {
     const iconSrcList = [building.spritePath];
     const devButton = document.createElement('button');
     devButton.type = 'button';
     devButton.className = 'dev-paint-tile dev-building-tile';
     devButton.dataset.type = building.type;
+    const familyLabel = captionOverride ?? cleanBuildingName(building);
+    const cost = building.cost ?? {};
+    const costPills: string[] = [];
+    if (cost.wood) {
+      costPills.push(
+        `<span class="cost-pill cost-wood" title="Wood"><span class="cost-icon">🪵</span>${cost.wood}</span>`,
+      );
+    }
+    if (cost.stone) {
+      costPills.push(
+        `<span class="cost-pill cost-stone" title="Stone"><span class="cost-icon">🪨</span>${cost.stone}</span>`,
+      );
+    }
+    const levelBadge = level
+      ? `<span class="bld-card-level-badge">Lv${level}</span>`
+      : '';
     devButton.innerHTML = `
-      ${iconSrcList ? `<img class="build-icon" alt="${building.name}" />` : ''}
-      <span class="dev-paint-label">
-        <strong>${captionOverride ?? building.name}</strong>
-        <small>${building.size.w}x${building.size.h}</small>
+      <div class="bld-card-icon">
+        <img class="build-icon" alt="${building.name}" />
+        ${levelBadge}
+      </div>
+      <div class="bld-card-info">
+        <strong class="bld-card-name">${familyLabel}</strong>
+        <div class="bld-card-meta">
+          <span class="bld-card-size" title="Footprint">${building.size.w}×${building.size.h}</span>
+          ${costPills.join('')}
+        </div>
         <small class="dev-lock-reason" data-lock-reason></small>
-      </span>
+      </div>
     `;
     const icon = devButton.querySelector<HTMLImageElement>('.build-icon');
     if (icon) {
       bindImageFallback(icon, iconSrcList);
     }
+    devButton.title = building.purpose ?? building.name;
+    attachPreview(
+      devButton,
+      building.spritePath,
+      `${building.name} · ${building.size.w}×${building.size.h}${building.purpose ? ` — ${building.purpose}` : ''}`,
+    );
     devButton.addEventListener('click', () => {
       options.onSetDevPaintEnabled(false);
       options.onSelectBuilding(building.type);
@@ -455,10 +571,58 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
 
 const BUILDING_LIST_TOOLTIP_FALLBACK = 'Select building';
 
+type BuildingCategory =
+  | 'housing'
+  | 'production'
+  | 'storage'
+  | 'civic'
+  | 'agriculture'
+  | 'defense';
+
+const CATEGORY_ORDER: BuildingCategory[] = [
+  'housing',
+  'storage',
+  'production',
+  'agriculture',
+  'civic',
+  'defense',
+];
+
+const CATEGORY_META: Record<BuildingCategory, { label: string; icon: string }> = {
+  housing: { label: 'Housing', icon: '🏠' },
+  storage: { label: 'Storage', icon: '📦' },
+  production: { label: 'Production', icon: '⚒️' },
+  agriculture: { label: 'Agriculture', icon: '🌾' },
+  civic: { label: 'Civic', icon: '⛲' },
+  defense: { label: 'Defense', icon: '🛡️' },
+};
+
+const CATEGORY_BY_FAMILY: Record<string, BuildingCategory> = {
+  house: 'housing',
+  tavern: 'housing',
+  farmhouse: 'housing',
+  storage: 'storage',
+  barn: 'storage',
+  lumber_mill: 'production',
+  blacksmith: 'production',
+  bakery: 'production',
+  workshop: 'production',
+  mason_yard: 'production',
+  herb_hut: 'agriculture',
+  fisher_hut: 'agriculture',
+  stable: 'agriculture',
+  town_hall: 'civic',
+  market_stall: 'civic',
+  well: 'civic',
+  shrine: 'civic',
+  watchtower: 'defense',
+};
+
 interface BuildingGroup {
   id: string;
   label: string;
   variants: BuildingDefinition[];
+  category: BuildingCategory;
 }
 
 const extractLevel = (type: BuildingType): number => {
@@ -490,14 +654,36 @@ const groupBuildings = (buildings: BuildingDefinition[]): BuildingGroup[] => {
   const result: BuildingGroup[] = [];
   for (const [key, variants] of groups.entries()) {
     variants.sort((a, b) => extractLevel(a.type) - extractLevel(b.type));
+    const category = CATEGORY_BY_FAMILY[key] ?? 'civic';
     result.push({
       id: key,
       label: key === variants[0].type ? variants[0].name : formatFamilyLabel(key),
       variants,
+      category,
     });
   }
   result.sort((a, b) => a.label.localeCompare(b.label));
   return result;
+};
+
+const groupByCategory = (groups: BuildingGroup[]): Map<BuildingCategory, BuildingGroup[]> => {
+  const result = new Map<BuildingCategory, BuildingGroup[]>();
+  for (const group of groups) {
+    const list = result.get(group.category) ?? [];
+    list.push(group);
+    result.set(group.category, list);
+  }
+  return result;
+};
+
+const renderStars = (count: number): string => {
+  const filled = '★'.repeat(count);
+  return filled;
+};
+
+const cleanBuildingName = (building: BuildingDefinition): string => {
+  const match = building.name.match(/^(.+?)\s+Lv\d+$/);
+  return match ? match[1] : building.name;
 };
 
 const bindImageFallback = (img: HTMLImageElement, sources: string[]): void => {

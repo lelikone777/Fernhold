@@ -9,8 +9,10 @@ export interface BuildingAssetEntry {
   brief: string;
 }
 
+const ASSET_BASE = import.meta.env.BASE_URL;
+
 const assetPath = (group: 'placeholders' | 'final', type: BuildingType): string =>
-  `/assets/visual/buildings/${group}/${type}.png`;
+  `${ASSET_BASE}assets/visual/buildings/${group}/${type}.png`;
 
 export const BUILDING_ASSET_MANIFEST: Record<BuildingType, BuildingAssetEntry> = {
   house_level_1: {

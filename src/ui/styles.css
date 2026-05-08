@@ -95,7 +95,9 @@ body,
   position: absolute;
   left: 10px;
   top: 72px;
-  width: 248px;
+  width: 296px;
+  max-height: calc(100vh - 92px);
+  overflow: hidden;
   padding: 10px;
   display: grid;
   gap: 8px;
@@ -215,9 +217,52 @@ body,
 
 .dev-buildings-groups {
   display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.dev-buildings-groups::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dev-buildings-groups::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.dev-buildings-groups::-webkit-scrollbar-thumb {
+  background: rgba(216, 200, 156, 0.3);
+  border-radius: 3px;
+}
+
+.building-category {
+  display: grid;
   gap: 6px;
-  max-height: 250px;
-  overflow: auto;
+}
+
+.building-category-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d8c89c;
+  padding: 4px 2px 2px;
+  border-bottom: 1px solid rgba(216, 200, 156, 0.18);
+}
+
+.building-category-icon {
+  font-size: 14px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.building-category-grid {
+  display: grid;
+  gap: 5px;
 }
 
 .building-group {
@@ -232,20 +277,168 @@ body,
 .building-level-list {
   display: none;
   gap: 4px;
-  padding-left: 10px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(216, 200, 156, 0.25);
+  margin-left: 4px;
 }
 
 .building-level-list.is-open {
   display: grid;
 }
 
+.dev-building-tile {
+  align-items: stretch;
+  padding: 7px;
+  gap: 9px;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.dev-building-tile:not(:disabled):hover {
+  border-color: #ffe8b0;
+  transform: translateY(-1px);
+  background: rgba(36, 48, 28, 0.92);
+}
+
 .dev-building-tile.is-locked {
-  opacity: 0.58;
-  border-color: rgba(210, 146, 120, 0.42);
+  opacity: 0.55;
+  border-color: rgba(210, 146, 120, 0.35);
 }
 
 .dev-building-tile.is-locked .build-icon {
-  filter: saturate(0.45) brightness(0.82);
+  filter: saturate(0.35) brightness(0.7);
+}
+
+.bld-card-icon {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 6px;
+  background: linear-gradient(155deg, rgba(70, 92, 56, 0.6), rgba(20, 26, 16, 0.85));
+  border: 1px solid rgba(216, 200, 156, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.bld-card-icon .build-icon {
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.bld-card-level-badge {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(140, 109, 67, 0.95);
+  color: #fef8de;
+  border: 1px solid rgba(255, 232, 176, 0.5);
+  line-height: 1;
+}
+
+.bld-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.bld-card-name {
+  font-size: 13px;
+  color: #fef8de;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bld-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.bld-card-size {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(216, 200, 156, 0.18);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px 1px 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(216, 200, 156, 0.18);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: #f3eed8;
+}
+
+.cost-pill .cost-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.cost-pill.cost-wood {
+  border-color: rgba(160, 110, 60, 0.5);
+}
+
+.cost-pill.cost-stone {
+  border-color: rgba(150, 150, 150, 0.45);
+}
+
+.bld-card-stars {
+  color: #ffd47a;
+  letter-spacing: 1px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.bld-card-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.dev-building-tile .dev-lock-reason {
+  display: block;
+  font-size: 10px;
+  color: #f1c09d;
+  line-height: 1.2;
+  margin-top: 1px;
+  min-height: 0;
+}
+
+.dev-building-tile.is-locked .dev-lock-reason:not(:empty) {
+  margin-top: 2px;
+}
+
+.building-group-head .bld-card-meta {
+  margin-top: 1px;
+}
+
+.building-group:has(.building-level-list.is-open) .building-group-head .bld-card-hint {
+  color: #ffe8b0;
 }
 
 .dev-foliage-swatch {
@@ -341,6 +534,80 @@ body,
 .hud-toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+.hud-preview {
+  position: fixed;
+  width: 220px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  border: 1px solid rgba(255, 232, 176, 0.7);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(48, 60, 40, 0.96), rgba(20, 28, 16, 0.96));
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+}
+
+.hud-preview.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.hud-preview-img {
+  width: 100%;
+  height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(70, 92, 56, 0.45), rgba(20, 26, 16, 0.7)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.04) 0 6px,
+      transparent 6px 12px
+    );
+  border: 1px solid rgba(216, 200, 156, 0.22);
+}
+
+.hud-preview-img.is-pixel {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.hud-preview-caption {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.3;
+  text-align: center;
+}
+
+.road-card-icon {
+  background: rgba(20, 26, 16, 0.9);
+}
+
+.road-thumb {
+  width: 46px;
+  height: 46px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-radius: 4px;
+  border: 1px solid rgba(216, 200, 156, 0.18);
+}
+
+.dev-roads-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  max-height: none;
+  overflow: visible;
 }
 
 @media (max-width: 960px) {
