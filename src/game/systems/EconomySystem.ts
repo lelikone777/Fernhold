@@ -30,11 +30,22 @@ const sum3 = (
   c: BuildingType,
 ): number => (counts[a] ?? 0) + (counts[b] ?? 0) + (counts[c] ?? 0);
 
+const sum5 = (
+  counts: Partial<Record<BuildingType, number>>,
+  a: BuildingType,
+  b: BuildingType,
+  c: BuildingType,
+  d: BuildingType,
+  e: BuildingType,
+): number => (counts[a] ?? 0) + (counts[b] ?? 0) + (counts[c] ?? 0) + (counts[d] ?? 0) + (counts[e] ?? 0);
+
 const computeHousing = (counts: Partial<Record<BuildingType, number>>): number =>
   2 +
   (counts.storage_level_1 ?? 0) * 2 +
   (counts.storage_level_2 ?? 0) * 4 +
   (counts.storage_level_3 ?? 0) * 6 +
+  (counts.storage_level_4 ?? 0) * 8 +
+  (counts.storage_level_5 ?? 0) * 10 +
   (counts.house_level_1 ?? 0) * 2 +
   (counts.house_level_2 ?? 0) * 4 +
   (counts.house_level_3 ?? 0) * 6 +
@@ -73,7 +84,14 @@ export class EconomySystem {
     const housing = computeHousing(counts);
     const needsBefore = computeNeeds(village.population);
     const lumberMillCount = sum3(counts, 'lumber_mill_level_1', 'lumber_mill_level_2', 'lumber_mill_level_3');
-    const barnCount = sum3(counts, 'barn_level_1', 'barn_level_2', 'barn_level_3');
+    const barnCount = sum5(
+      counts,
+      'barn_level_1',
+      'barn_level_2',
+      'barn_level_3',
+      'barn_level_4',
+      'barn_level_5',
+    );
     const blacksmithCount = sum3(counts, 'blacksmith_level_1', 'blacksmith_level_2', 'blacksmith_level_3');
     const tavernCount = sum3(counts, 'tavern_level_1', 'tavern_level_2', 'tavern_level_3');
 

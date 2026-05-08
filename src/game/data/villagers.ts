@@ -50,6 +50,8 @@ export const WORK_BUILDING_TYPES: ReadonlySet<BuildingType> = new Set<BuildingTy
   'barn_level_1',
   'barn_level_2',
   'barn_level_3',
+  'barn_level_4',
+  'barn_level_5',
   'town_hall',
   'well',
 ]);
