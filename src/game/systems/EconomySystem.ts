@@ -10,6 +10,9 @@ interface DayResult {
 const countBuildings = (buildings: PlacedBuilding[]): Record<BuildingType, number> => {
   const counts = {} as Record<BuildingType, number>;
   for (const building of buildings) {
+    if (building.construction && building.construction.stage !== 'complete') {
+      continue;
+    }
     counts[building.type] = (counts[building.type] ?? 0) + 1;
   }
   return counts;
@@ -77,6 +80,7 @@ export class EconomySystem {
     buildings: PlacedBuilding[],
     village: VillageState,
     workerCounts: ReadonlyMap<string, number>,
+    workerEfficiencyByBuilding?: ReadonlyMap<string, number>,
   ): DayResult {
     const nextResources = cloneResources(resources);
     const produced: Partial<Resources> = {};
@@ -104,6 +108,9 @@ export class EconomySystem {
     let totalAssigned = 0;
 
     for (const building of buildings) {
+      if (building.construction && building.construction.stage !== 'complete') {
+        continue;
+      }
       const def = BUILDING_DEFINITIONS[building.type];
       const prod = def.production;
       if (!prod) continue;
@@ -139,8 +146,9 @@ export class EconomySystem {
       }
 
       if (prod.produces) {
+        const efficiencyBonus = workerEfficiencyByBuilding?.get(building.id) ?? 1;
         for (const [res, baseAmount] of Object.entries(prod.produces) as [keyof Resources, number][]) {
-          const amount = Math.floor(baseAmount * staffRatio * productivity);
+          const amount = Math.floor(baseAmount * staffRatio * productivity * efficiencyBonus);
           if (amount > 0) addProduced(res, amount);
         }
       }
@@ -152,10 +160,8 @@ export class EconomySystem {
 
     const idleVillagers = Math.max(0, village.population - totalAssigned);
     if (idleVillagers > 0) {
-      addProduced('wood', idleVillagers);
-      addProduced('stone', idleVillagers);
       addProduced('food', idleVillagers);
-      notes.push(`${idleVillagers} idle ${idleVillagers === 1 ? 'villager gathers' : 'villagers gather'} resources.`);
+      notes.push(`${idleVillagers} idle ${idleVillagers === 1 ? 'villager gathers' : 'villagers gather'} food.`);
     }
 
     const barnCount = sum5(counts, 'barn_level_1', 'barn_level_2', 'barn_level_3', 'barn_level_4', 'barn_level_5');

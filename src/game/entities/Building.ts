@@ -6,12 +6,66 @@ const PRODUCTION_TYPES = new Set([
   'lumber_mill_level_1',
   'lumber_mill_level_2',
   'lumber_mill_level_3',
+  'lumberjack_camp_level_1',
+  'lumberjack_camp_level_2',
+  'lumberjack_camp_level_3',
   'blacksmith_level_1',
   'blacksmith_level_2',
   'blacksmith_level_3',
   'bakery',
   'workshop',
   'mason_yard',
+  'stone_quarry_level_1',
+  'stone_quarry_level_2',
+  'stone_quarry_level_3',
+  'field_level_1',
+  'field_level_2',
+  'field_level_3',
+  'windmill_level_1',
+  'windmill_level_2',
+  'coal_mine_level_1',
+  'coal_mine_level_2',
+  'iron_mine_level_1',
+  'iron_mine_level_2',
+  'copper_tin_mine_level_1',
+  'copper_tin_mine_level_2',
+  'precious_mine_level_1',
+  'precious_mine_level_2',
+  'smelter_level_1',
+  'smelter_level_2',
+  'foundry',
+  'mint',
+  'tool_workshop',
+  'pasture_level_1',
+  'pasture_level_2',
+  'pasture_level_3',
+  'pasture_level_4',
+  'pasture_level_5',
+  'butcher_shop_level_1',
+  'butcher_shop_level_2',
+  'butcher_shop_level_3',
+  'butcher_shop_level_4',
+  'butcher_shop_level_5',
+  'dairy_level_1',
+  'dairy_level_2',
+  'dairy_level_3',
+  'dairy_level_4',
+  'dairy_level_5',
+  'creamery_level_1',
+  'creamery_level_2',
+  'creamery_level_3',
+  'creamery_level_4',
+  'creamery_level_5',
+  'smokehouse_level_1',
+  'smokehouse_level_2',
+  'smokehouse_level_3',
+  'smokehouse_level_4',
+  'smokehouse_level_5',
+  'kitchen_level_1',
+  'kitchen_level_2',
+  'kitchen_level_3',
+  'kitchen_level_4',
+  'kitchen_level_5',
 ]);
 
 const LIT_AT_NIGHT_TYPES = new Set([
@@ -103,6 +157,22 @@ export const createBuildingView = (
   }
 
   const container = scene.add.container(worldPos.x, worldPos.y, children).setDepth(0.6);
+  if (placed.construction && placed.construction.stage !== 'complete') {
+    const scaffold = scene.add
+      .rectangle(
+        width * 0.5,
+        height * 0.58,
+        Math.max(width * 0.9, 18),
+        Math.max(height * 0.75, 14),
+        0xd6c8a1,
+        0.22,
+      )
+      .setStrokeStyle(1, 0x8d7248, 0.9);
+    container.add(scaffold);
+    container.setAlpha(placed.construction.stage === 'foundation' ? 0.35 : 0.65);
+  } else {
+    container.setAlpha(1);
+  }
   if (meta.light) {
     VIEW_META.set(container, meta);
   }

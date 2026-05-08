@@ -32,12 +32,25 @@ interface HudOptions {
   onSelectDevRoad: (roadId: string) => void;
   onEraseDevPaintTile: () => void;
   onCloseBuildingDetails: () => void;
+  onAdjustBuildingWorkers: (buildingId: string, delta: number) => void;
 }
 
 export interface HudController {
   setResources: (resources: Resources) => void;
   setVillage: (village: VillageState) => void;
   setWorkerInfo: (assigned: number, totalSlots: number) => void;
+  setWorkerRoles: (
+    carrier: number,
+    worker: number,
+    builder: number,
+    carrierLevel: number,
+    carrierProgress: number,
+    workerLevel: number,
+    workerProgress: number,
+    builderLevel: number,
+    builderProgress: number,
+  ) => void;
+  setDropCount: (count: number) => void;
   setBuildingAvailability: (availability: Record<BuildingType, BuildingAvailability>) => void;
   setSelectedBuilding: (type: BuildingType | null, bulldozeMode: boolean) => void;
   setDay: (day: number) => void;
@@ -63,6 +76,30 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
         <span>Food: <strong data-res="food">0</strong></span>
         <span>Tools: <strong data-res="tools">0</strong></span>
         <span>Weapons: <strong data-res="weapons">0</strong></span>
+        <span>Grain: <strong data-res="grain">0</strong></span>
+        <span>Flour: <strong data-res="flour">0</strong></span>
+        <span>Coal: <strong data-res="coal">0</strong></span>
+        <span>Iron Ore: <strong data-res="iron_ore">0</strong></span>
+        <span>Copper Ore: <strong data-res="copper_ore">0</strong></span>
+        <span>Tin Ore: <strong data-res="tin_ore">0</strong></span>
+        <span>Silver Ore: <strong data-res="silver_ore">0</strong></span>
+        <span>Gold Ore: <strong data-res="gold_ore">0</strong></span>
+        <span>Bronze: <strong data-res="bronze_ingot">0</strong></span>
+        <span>Iron: <strong data-res="iron_ingot">0</strong></span>
+        <span>Silver: <strong data-res="silver_ingot">0</strong></span>
+        <span>Gold: <strong data-res="gold_ingot">0</strong></span>
+        <span>Livestock: <strong data-res="livestock">0</strong></span>
+        <span>Meat: <strong data-res="meat">0</strong></span>
+        <span>Milk: <strong data-res="milk">0</strong></span>
+        <span>Cheese: <strong data-res="cheese">0</strong></span>
+        <span>Fish: <strong data-res="fish">0</strong></span>
+        <span>Smoked Fish: <strong data-res="smoked_fish">0</strong></span>
+        <span>Vegetables: <strong data-res="vegetables">0</strong></span>
+        <span>Pickaxe: <strong data-res="pickaxe">0</strong></span>
+        <span>Axe: <strong data-res="axe">0</strong></span>
+        <span>Shovel: <strong data-res="shovel">0</strong></span>
+        <span>Knife: <strong data-res="knife">0</strong></span>
+        <span>Hammer: <strong data-res="hammer">0</strong></span>
         <span>Day: <strong data-day>1</strong></span>
       </div>
       <div class="resource-list resource-list-secondary">
@@ -73,6 +110,15 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
         <span>Tools Need: <strong data-village="toolsNeed">0</strong></span>
         <span>Weapons Need: <strong data-village="weaponsNeed">0</strong></span>
         <span>Workers: <strong data-workers>0/0</strong></span>
+        <span>Carriers: <strong data-carriers>0</strong></span>
+        <span>Workers+: <strong data-workers-role>0</strong></span>
+        <span>Builders: <strong data-builders>0</strong></span>
+        <span>Drops: <strong data-drops>0</strong></span>
+      </div>
+      <div class="resource-list resource-list-secondary">
+        <span>Carrier XP: <strong data-xp-carrier>Lv1 0%</strong></span>
+        <span>Worker XP: <strong data-xp-worker>Lv1 0%</strong></span>
+        <span>Builder XP: <strong data-xp-builder>Lv1 0%</strong></span>
       </div>
       <button type="button" class="hud-button" data-action="reset">Reset Save</button>
     </div>
@@ -88,7 +134,6 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
         <button type="button" class="dev-tab is-active" data-tab="trees">Trees</button>
         <button type="button" class="dev-tab" data-tab="buildings">Buildings</button>
         <button type="button" class="dev-tab" data-tab="roads">Roads</button>
-        <button type="button" class="dev-tab" data-tab="decor">Decor</button>
       </div>
       <div class="dev-panel is-active" data-panel="trees">
         <div class="dev-paint-section">
@@ -142,6 +187,14 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
         <span class="building-details-section-title">Consumes</span>
         <div class="building-details-list" data-bd-consumes></div>
       </div>
+      <div class="building-details-section">
+        <span class="building-details-section-title">Assignment</span>
+        <div class="building-details-list">
+          <button type="button" class="hud-button" data-action="bd-workers-minus">-</button>
+          <span class="flow-chip" data-bd-assignment>-</span>
+          <button type="button" class="hud-button" data-action="bd-workers-plus">+</button>
+        </div>
+      </div>
       <div class="building-details-foot" data-bd-extra></div>
     </div>
     <div class="hud-toast" data-toast aria-live="polite"></div>
@@ -150,6 +203,7 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
       <div class="hud-preview-caption" data-preview-caption></div>
     </div>
   `;
+  root.querySelector<HTMLElement>('[data-panel="decor"]')?.remove();
 
   const woodEl = root.querySelector<HTMLElement>('[data-res="wood"]');
   const stoneEl = root.querySelector<HTMLElement>('[data-res="stone"]');
@@ -157,6 +211,30 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   const toolsEl = root.querySelector<HTMLElement>('[data-res="tools"]');
   const weaponsEl = root.querySelector<HTMLElement>('[data-res="weapons"]');
   const dayEl = root.querySelector<HTMLElement>('[data-day]');
+  const grainEl = root.querySelector<HTMLElement>('[data-res="grain"]');
+  const flourEl = root.querySelector<HTMLElement>('[data-res="flour"]');
+  const coalEl = root.querySelector<HTMLElement>('[data-res="coal"]');
+  const ironOreEl = root.querySelector<HTMLElement>('[data-res="iron_ore"]');
+  const copperOreEl = root.querySelector<HTMLElement>('[data-res="copper_ore"]');
+  const tinOreEl = root.querySelector<HTMLElement>('[data-res="tin_ore"]');
+  const silverOreEl = root.querySelector<HTMLElement>('[data-res="silver_ore"]');
+  const goldOreEl = root.querySelector<HTMLElement>('[data-res="gold_ore"]');
+  const bronzeIngotEl = root.querySelector<HTMLElement>('[data-res="bronze_ingot"]');
+  const ironIngotEl = root.querySelector<HTMLElement>('[data-res="iron_ingot"]');
+  const silverIngotEl = root.querySelector<HTMLElement>('[data-res="silver_ingot"]');
+  const goldIngotEl = root.querySelector<HTMLElement>('[data-res="gold_ingot"]');
+  const livestockEl = root.querySelector<HTMLElement>('[data-res="livestock"]');
+  const meatEl = root.querySelector<HTMLElement>('[data-res="meat"]');
+  const milkEl = root.querySelector<HTMLElement>('[data-res="milk"]');
+  const cheeseEl = root.querySelector<HTMLElement>('[data-res="cheese"]');
+  const fishEl = root.querySelector<HTMLElement>('[data-res="fish"]');
+  const smokedFishEl = root.querySelector<HTMLElement>('[data-res="smoked_fish"]');
+  const vegetablesEl = root.querySelector<HTMLElement>('[data-res="vegetables"]');
+  const pickaxeEl = root.querySelector<HTMLElement>('[data-res="pickaxe"]');
+  const axeEl = root.querySelector<HTMLElement>('[data-res="axe"]');
+  const shovelEl = root.querySelector<HTMLElement>('[data-res="shovel"]');
+  const knifeEl = root.querySelector<HTMLElement>('[data-res="knife"]');
+  const hammerEl = root.querySelector<HTMLElement>('[data-res="hammer"]');
   const populationEl = root.querySelector<HTMLElement>('[data-village="population"]');
   const moraleEl = root.querySelector<HTMLElement>('[data-village="morale"]');
   const housingEl = root.querySelector<HTMLElement>('[data-village="housing"]');
@@ -164,6 +242,13 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   const toolsNeedEl = root.querySelector<HTMLElement>('[data-village="toolsNeed"]');
   const weaponsNeedEl = root.querySelector<HTMLElement>('[data-village="weaponsNeed"]');
   const workersEl = root.querySelector<HTMLElement>('[data-workers]');
+  const carriersEl = root.querySelector<HTMLElement>('[data-carriers]');
+  const workersRoleEl = root.querySelector<HTMLElement>('[data-workers-role]');
+  const buildersEl = root.querySelector<HTMLElement>('[data-builders]');
+  const dropsEl = root.querySelector<HTMLElement>('[data-drops]');
+  const carrierXpEl = root.querySelector<HTMLElement>('[data-xp-carrier]');
+  const workerXpEl = root.querySelector<HTMLElement>('[data-xp-worker]');
+  const builderXpEl = root.querySelector<HTMLElement>('[data-xp-builder]');
   const devTabs = root.querySelector<HTMLElement>('[data-dev-tabs]');
   const devFoliageGrid = root.querySelector<HTMLElement>('[data-dev-foliage-grid]');
   const devBuildingsGrid = root.querySelector<HTMLElement>('[data-dev-buildings-grid]');
@@ -187,6 +272,9 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   const buildingDetailsPurposeEl = root.querySelector<HTMLElement>('[data-bd-purpose]');
   const buildingDetailsProducesEl = root.querySelector<HTMLElement>('[data-bd-produces]');
   const buildingDetailsConsumesEl = root.querySelector<HTMLElement>('[data-bd-consumes]');
+  const buildingDetailsAssignmentEl = root.querySelector<HTMLElement>('[data-bd-assignment]');
+  const workersMinusButton = root.querySelector<HTMLButtonElement>('[data-action="bd-workers-minus"]');
+  const workersPlusButton = root.querySelector<HTMLButtonElement>('[data-action="bd-workers-plus"]');
   const buildingDetailsExtraEl = root.querySelector<HTMLElement>('[data-bd-extra]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
   const previewImgEl = previewEl?.querySelector<HTMLImageElement>('.hud-preview-img') ?? null;
@@ -199,12 +287,44 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     !toolsEl ||
     !weaponsEl ||
     !dayEl ||
+    !grainEl ||
+    !flourEl ||
+    !coalEl ||
+    !ironOreEl ||
+    !copperOreEl ||
+    !tinOreEl ||
+    !silverOreEl ||
+    !goldOreEl ||
+    !bronzeIngotEl ||
+    !ironIngotEl ||
+    !silverIngotEl ||
+    !goldIngotEl ||
+    !livestockEl ||
+    !meatEl ||
+    !milkEl ||
+    !cheeseEl ||
+    !fishEl ||
+    !smokedFishEl ||
+    !vegetablesEl ||
+    !pickaxeEl ||
+    !axeEl ||
+    !shovelEl ||
+    !knifeEl ||
+    !hammerEl ||
     !populationEl ||
     !moraleEl ||
     !housingEl ||
     !foodNeedEl ||
     !toolsNeedEl ||
     !weaponsNeedEl ||
+    !workersEl ||
+    !carriersEl ||
+    !workersRoleEl ||
+    !buildersEl ||
+    !dropsEl ||
+    !carrierXpEl ||
+    !workerXpEl ||
+    !builderXpEl ||
     !devTabs ||
     !devFoliageGrid ||
     !devBuildingsGrid ||
@@ -226,6 +346,9 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     !buildingDetailsPurposeEl ||
     !buildingDetailsProducesEl ||
     !buildingDetailsConsumesEl ||
+    !buildingDetailsAssignmentEl ||
+    !workersMinusButton ||
+    !workersPlusButton ||
     !buildingDetailsExtraEl ||
     !previewEl ||
     !previewImgEl ||
@@ -383,6 +506,15 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   closeBuildingDetailsButton.addEventListener('click', () => {
     options.onCloseBuildingDetails();
   });
+  let selectedDetailsBuildingId: string | null = null;
+  workersMinusButton.addEventListener('click', () => {
+    if (!selectedDetailsBuildingId) return;
+    options.onAdjustBuildingWorkers(selectedDetailsBuildingId, -1);
+  });
+  workersPlusButton.addEventListener('click', () => {
+    if (!selectedDetailsBuildingId) return;
+    options.onAdjustBuildingWorkers(selectedDetailsBuildingId, 1);
+  });
 
   for (const tabButton of devTabs.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
     const tabId = tabButton.dataset.tab;
@@ -505,6 +637,30 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     foodEl.textContent = String(resources.food);
     toolsEl.textContent = String(resources.tools);
     weaponsEl.textContent = String(resources.weapons);
+    grainEl.textContent = String(resources.grain);
+    flourEl.textContent = String(resources.flour);
+    coalEl.textContent = String(resources.coal);
+    ironOreEl.textContent = String(resources.iron_ore);
+    copperOreEl.textContent = String(resources.copper_ore);
+    tinOreEl.textContent = String(resources.tin_ore);
+    silverOreEl.textContent = String(resources.silver_ore);
+    goldOreEl.textContent = String(resources.gold_ore);
+    bronzeIngotEl.textContent = String(resources.bronze_ingot);
+    ironIngotEl.textContent = String(resources.iron_ingot);
+    silverIngotEl.textContent = String(resources.silver_ingot);
+    goldIngotEl.textContent = String(resources.gold_ingot);
+    livestockEl.textContent = String(resources.livestock);
+    meatEl.textContent = String(resources.meat);
+    milkEl.textContent = String(resources.milk);
+    cheeseEl.textContent = String(resources.cheese);
+    fishEl.textContent = String(resources.fish);
+    smokedFishEl.textContent = String(resources.smoked_fish);
+    vegetablesEl.textContent = String(resources.vegetables);
+    pickaxeEl.textContent = String(resources.pickaxe);
+    axeEl.textContent = String(resources.axe);
+    shovelEl.textContent = String(resources.shovel);
+    knifeEl.textContent = String(resources.knife);
+    hammerEl.textContent = String(resources.hammer);
   };
 
   const setVillage = (village: VillageState): void => {
@@ -517,18 +673,41 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
   };
 
   const setWorkerInfo = (assigned: number, totalSlots: number): void => {
-    if (workersEl) {
-      workersEl.textContent = `${assigned}/${totalSlots}`;
-      workersEl.classList.toggle('is-shortage', assigned < totalSlots && totalSlots > 0);
-    }
+    workersEl.textContent = `${assigned}/${totalSlots}`;
+    workersEl.classList.toggle('is-shortage', assigned < totalSlots && totalSlots > 0);
+  };
+
+  const setWorkerRoles = (
+    carrier: number,
+    worker: number,
+    builder: number,
+    carrierLevel: number,
+    carrierProgress: number,
+    workerLevel: number,
+    workerProgress: number,
+    builderLevel: number,
+    builderProgress: number,
+  ): void => {
+    carriersEl.textContent = String(carrier);
+    workersRoleEl.textContent = String(worker);
+    buildersEl.textContent = String(builder);
+    carrierXpEl.textContent = `Lv${Math.max(1, Math.round(carrierLevel))} ${Math.round(carrierProgress * 100)}%`;
+    workerXpEl.textContent = `Lv${Math.max(1, Math.round(workerLevel))} ${Math.round(workerProgress * 100)}%`;
+    builderXpEl.textContent = `Lv${Math.max(1, Math.round(builderLevel))} ${Math.round(builderProgress * 100)}%`;
+  };
+
+  const setDropCount = (count: number): void => {
+    dropsEl.textContent = String(count);
   };
 
   const setBuildingDetails = (payload: BuildingDetailsPayload | null): void => {
     if (!payload) {
       buildingDetailsEl.classList.add('is-hidden');
+      selectedDetailsBuildingId = null;
       return;
     }
 
+    selectedDetailsBuildingId = payload.id;
     buildingDetailsEl.classList.remove('is-hidden');
     buildingDetailsEl.dataset.status = payload.status;
 
@@ -566,6 +745,14 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
         : payload.workerSlots > 0
           ? 'Production building'
           : 'Service / decorative building';
+
+    const roleLabel = payload.assignmentRole
+      ? formatRoleName(payload.assignmentRole)
+      : 'Not assignable';
+    buildingDetailsAssignmentEl.textContent = `${payload.assignmentDesired}/${payload.assignmentSlots} ${roleLabel}`;
+    const canAdjust = payload.assignmentRole !== null && payload.assignmentSlots > 0;
+    workersMinusButton.disabled = !canAdjust || payload.assignmentDesired <= 0;
+    workersPlusButton.disabled = !canAdjust || payload.assignmentDesired >= payload.assignmentSlots;
   };
 
   const setBuildingAvailability = (availability: Record<BuildingType, BuildingAvailability>): void => {
@@ -648,6 +835,8 @@ export const createHud = (root: HTMLElement, options: HudOptions): HudController
     setResources,
     setVillage,
     setWorkerInfo,
+    setWorkerRoles,
+    setDropCount,
     setBuildingAvailability,
     setSelectedBuilding,
     setDay,
@@ -756,10 +945,28 @@ const CATEGORY_BY_FAMILY: Record<string, BuildingCategory> = {
   storage: 'storage',
   barn: 'storage',
   lumber_mill: 'production',
+  lumberjack_camp: 'production',
   blacksmith: 'production',
   bakery: 'production',
   workshop: 'production',
   mason_yard: 'production',
+  stone_quarry: 'production',
+  field: 'agriculture',
+  windmill: 'agriculture',
+  coal_mine: 'production',
+  iron_mine: 'production',
+  copper_tin_mine: 'production',
+  precious_mine: 'production',
+  smelter: 'production',
+  foundry: 'production',
+  tool_workshop: 'production',
+  pasture: 'agriculture',
+  butcher_shop: 'production',
+  dairy: 'agriculture',
+  creamery: 'agriculture',
+  smokehouse: 'production',
+  kitchen: 'production',
+  mint: 'civic',
   herb_hut: 'agriculture',
   fisher_hut: 'agriculture',
   stable: 'agriculture',
@@ -850,8 +1057,73 @@ const formatResourceName = (resource: ResourceType): string => {
       return 'Tools';
     case 'weapons':
       return 'Weapons';
+    case 'grain':
+      return 'Grain';
+    case 'flour':
+      return 'Flour';
+    case 'coal':
+      return 'Coal';
+    case 'iron_ore':
+      return 'Iron Ore';
+    case 'copper_ore':
+      return 'Copper Ore';
+    case 'tin_ore':
+      return 'Tin Ore';
+    case 'silver_ore':
+      return 'Silver Ore';
+    case 'gold_ore':
+      return 'Gold Ore';
+    case 'bronze_ingot':
+      return 'Bronze Ingot';
+    case 'iron_ingot':
+      return 'Iron Ingot';
+    case 'silver_ingot':
+      return 'Silver Ingot';
+    case 'gold_ingot':
+      return 'Gold Ingot';
+    case 'livestock':
+      return 'Livestock';
+    case 'meat':
+      return 'Meat';
+    case 'milk':
+      return 'Milk';
+    case 'cheese':
+      return 'Cheese';
+    case 'fish':
+      return 'Fish';
+    case 'smoked_fish':
+      return 'Smoked Fish';
+    case 'vegetables':
+      return 'Vegetables';
+    case 'pickaxe':
+      return 'Pickaxe';
+    case 'axe':
+      return 'Axe';
+    case 'shovel':
+      return 'Shovel';
+    case 'knife':
+      return 'Knife';
+    case 'hammer':
+      return 'Hammer';
     default:
       return resource;
+  }
+};
+
+const formatRoleName = (role: 'carrier' | 'worker' | 'builder' | 'lumberjack' | 'miner'): string => {
+  switch (role) {
+    case 'carrier':
+      return 'Carrier';
+    case 'worker':
+      return 'Worker';
+    case 'builder':
+      return 'Builder';
+    case 'lumberjack':
+      return 'Lumberjack';
+    case 'miner':
+      return 'Miner';
+    default:
+      return role;
   }
 };
 

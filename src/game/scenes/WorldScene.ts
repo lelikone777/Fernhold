@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { DevPaintStateController } from '../controllers/DevPaintStateController';
 import { WorldPersistenceController } from '../controllers/WorldPersistenceController';
 import { DEV_FOLIAGE_ITEMS } from '../data/devFoliage';
+import { STONE_FOLIAGE_IDS, TREE_FOLIAGE_IDS } from '../data/naturalResources';
 import { createBuildingView, getBuildingViewMeta, playDemolishTween } from '../entities/Building';
 import { CAMERA, DAY_DURATION_MS, EVENT_KEYS } from '../constants';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
@@ -9,12 +10,16 @@ import { MAP_CONFIG } from '../data/map';
 import { INITIAL_RESOURCES, INITIAL_VILLAGE } from '../data/resources';
 import { BuildingSystem } from '../systems/BuildingSystem';
 import { CameraSystem } from '../systems/CameraSystem';
+import { CarrierSystem } from '../systems/CarrierSystem';
+import { ConstructionSystem } from '../systems/ConstructionSystem';
 import { EconomySystem } from '../systems/EconomySystem';
 import { FoliagePaintSystem } from '../systems/FoliagePaintSystem';
+import { HarvestSystem } from '../systems/HarvestSystem';
 import { InputSystem } from '../systems/InputSystem';
 import { PlacementPreviewSystem } from '../systems/PlacementPreviewSystem';
 import { PlacementSystem } from '../systems/PlacementSystem';
 import { ProgressionSystem } from '../systems/ProgressionSystem';
+import { ResourceDropSystem } from '../systems/ResourceDropSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { RoadPaintSystem } from '../systems/RoadPaintSystem';
 import { VillagerSystem } from '../systems/VillagerSystem';
@@ -36,8 +41,8 @@ import { worldToGrid } from '../utils/grid';
 import { resetIdCounters, setBuildingCounter } from '../utils/ids';
 
 const EARLY_HINTS = new Map<number, string>([
-  [2, 'Tip: Build a Lumber Mill for wood production. Idle villagers gather basic resources.'],
-  [4, 'Tip: You need stone to expand. Keep some villagers idle or build a Mason Yard.'],
+  [2, 'Tip: Build a Lumberjack Camp and Storage to start physical wood logistics.'],
+  [4, 'Tip: Build a Stone Quarry and add carriers for reliable stone delivery.'],
   [6, 'Tip: Build a Workshop to craft tools. Tools boost all production.'],
   [8, 'Tip: Build houses and raise morale above 75 to attract new villagers.'],
 ]);
@@ -54,6 +59,16 @@ interface UiSnapshot {
   selectedRoadId: string | null;
   workersAssigned: number;
   workerSlots: number;
+  carrierWorkers: number;
+  workerWorkers: number;
+  builderWorkers: number;
+  carrierLevel: number;
+  carrierProgress: number;
+  workerLevel: number;
+  workerProgress: number;
+  builderLevel: number;
+  builderProgress: number;
+  resourceDropCount: number;
   buildingDetails: BuildingDetailsPayload | null;
 }
 
@@ -76,6 +91,10 @@ export class WorldScene extends Phaser.Scene {
   private villagerSystem!: VillagerSystem;
   private roadPaintSystem!: RoadPaintSystem;
   private foliagePaintSystem!: FoliagePaintSystem;
+  private resourceDropSystem!: ResourceDropSystem;
+  private harvestSystem!: HarvestSystem;
+  private carrierSystem!: CarrierSystem;
+  private readonly constructionSystem = new ConstructionSystem();
   private placementPreviewSystem!: PlacementPreviewSystem;
   private placementSystem!: PlacementSystem;
   private preview!: Phaser.GameObjects.Graphics;
@@ -96,6 +115,12 @@ export class WorldScene extends Phaser.Scene {
   private inspectedBuildingId: string | null = null;
   private buildingDetailsElapsedMs = 0;
   private groundImage!: Phaser.GameObjects.Image;
+  private initialTreeCount = 0;
+  private pendingTreeRegrowth: { x: number; y: number; growDay: number }[] = [];
+  private lastCarrierCount = -1;
+  private lastWorkerCount = -1;
+  private lastBuilderCount = -1;
+  private lastDropCount = -1;
 
   constructor() {
     super('WorldScene');
@@ -123,6 +148,14 @@ export class WorldScene extends Phaser.Scene {
     this.roadPaintSystem.load(initialState.roads);
     this.foliagePaintSystem = new FoliagePaintSystem(this, this.tileSize, DEV_FOLIAGE_ITEMS);
     this.foliagePaintSystem.load(initialState.foliageObjects);
+    if (initialState.foliageObjects.length === 0) {
+      this.seedStarterNature();
+    }
+    this.initialTreeCount = this.foliagePaintSystem.getAllPositionsFor(TREE_FOLIAGE_IDS).length;
+    this.resourceDropSystem = new ResourceDropSystem({ scene: this, tileSize: this.tileSize });
+    this.resourceDropSystem.load(initialState.resourceDrops);
+    this.harvestSystem = new HarvestSystem();
+    this.carrierSystem = new CarrierSystem(this.resourceDropSystem, this.constructionSystem);
 
     this.drawGround();
     this.drawNatureDecor();
@@ -155,6 +188,27 @@ export class WorldScene extends Phaser.Scene {
       mapHeight: this.mapHeight,
       isTileBlocked: (x, y) => this.buildingSystem.isTileOccupied(x, y),
       getBuildings: () => this.buildingSystem.getBuildings(),
+      getFoliageSystem: () => this.foliagePaintSystem,
+      getResourceDropSystem: () => this.resourceDropSystem,
+      getHarvestSystem: () => this.harvestSystem,
+      getCarrierSystem: () => this.carrierSystem,
+      getConstructionSystem: () => this.constructionSystem,
+      onStorageDelivered: (resource, amount) => {
+        this.resourceSystem.add({ [resource]: amount });
+        this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
+      },
+      consumeResource: (resource, amount) => {
+        const ok = this.resourceSystem.spend({ [resource]: amount });
+        if (ok) {
+          this.game.events.emit(EVENT_KEYS.resourcesChanged, this.resourceSystem.getResources());
+        }
+        return ok;
+      },
+      hasResource: (resource, amount) => this.resourceSystem.canAfford({ [resource]: amount }),
+      onConstructionCompleted: (buildingId) => {
+        this.refreshBuildingView(buildingId, true);
+      },
+      getCurrentDay: () => this.day,
     });
     this.villagerSystem.syncPopulation(this.village.population);
     this.placementSystem = new PlacementSystem(
@@ -163,6 +217,7 @@ export class WorldScene extends Phaser.Scene {
       this.resourceSystem,
       this.economySystem,
       this.villagerSystem,
+      this.constructionSystem,
       {
         updateVillage: (village) => {
           this.village = village;
@@ -263,6 +318,9 @@ export class WorldScene extends Phaser.Scene {
   public update(_time: number, delta: number): void {
     this.cameraSystem.update(delta);
     this.villagerSystem?.update(delta);
+    this.syncConstructionViewStates();
+    this.emitWorkerRoleStats();
+    this.emitResourceDropCountIfChanged();
     this.autosaveElapsedMs += delta;
     this.dayElapsedMs += delta;
 
@@ -293,6 +351,8 @@ export class WorldScene extends Phaser.Scene {
 
   public getUiSnapshot(): UiSnapshot {
     const workerInfo = this.computeWorkerInfo();
+    const roleCounts = this.villagerSystem?.getRoleCounts() ?? new Map();
+    const roleExp = this.villagerSystem?.getRoleExperienceSummary();
     return {
       resources: this.resourceSystem.getResources(),
       village: this.village,
@@ -305,6 +365,16 @@ export class WorldScene extends Phaser.Scene {
       selectedRoadId: this.devPaintState.getSnapshot().selectedRoadId,
       workersAssigned: workerInfo.assigned,
       workerSlots: workerInfo.totalSlots,
+      carrierWorkers: roleCounts.get('carrier') ?? 0,
+      workerWorkers: roleCounts.get('worker') ?? 0,
+      builderWorkers: roleCounts.get('builder') ?? 0,
+      carrierLevel: roleExp?.carrier.avgLevel ?? 1,
+      carrierProgress: roleExp?.carrier.avgProgress ?? 0,
+      workerLevel: roleExp?.worker.avgLevel ?? 1,
+      workerProgress: roleExp?.worker.avgProgress ?? 0,
+      builderLevel: roleExp?.builder.avgLevel ?? 1,
+      builderProgress: roleExp?.builder.avgProgress ?? 0,
+      resourceDropCount: this.resourceDropSystem?.getCount() ?? 0,
       buildingDetails: this.getBuildingDetailsPayload(this.inspectedBuildingId),
     };
   }
@@ -314,6 +384,9 @@ export class WorldScene extends Phaser.Scene {
     let totalSlots = 0;
     let assigned = 0;
     for (const building of this.buildingSystem.getBuildings()) {
+      if (building.construction && building.construction.stage !== 'complete') {
+        continue;
+      }
       const slots = BUILDING_DEFINITIONS[building.type].production?.workerSlots ?? 0;
       if (slots <= 0) continue;
       totalSlots += slots;
@@ -359,6 +432,7 @@ export class WorldScene extends Phaser.Scene {
     this.game.events.on(EVENT_KEYS.requestSelectDevRoad, this.handleSelectDevRoad, this);
     this.game.events.on(EVENT_KEYS.requestEraseDevPaintTile, this.handleEraseDevPaintTile, this);
     this.game.events.on(EVENT_KEYS.requestCloseBuildingDetails, this.handleCloseBuildingDetails, this);
+    this.game.events.on(EVENT_KEYS.requestAdjustBuildingWorkers, this.handleAdjustBuildingWorkers, this);
 
     this.events.once('shutdown', () => {
       this.game.events.off(EVENT_KEYS.requestSelectBuilding, this.handleSelectBuilding, this);
@@ -369,6 +443,7 @@ export class WorldScene extends Phaser.Scene {
       this.game.events.off(EVENT_KEYS.requestSelectDevRoad, this.handleSelectDevRoad, this);
       this.game.events.off(EVENT_KEYS.requestEraseDevPaintTile, this.handleEraseDevPaintTile, this);
       this.game.events.off(EVENT_KEYS.requestCloseBuildingDetails, this.handleCloseBuildingDetails, this);
+      this.game.events.off(EVENT_KEYS.requestAdjustBuildingWorkers, this.handleAdjustBuildingWorkers, this);
       this.cleanup();
     });
   }
@@ -446,6 +521,16 @@ export class WorldScene extends Phaser.Scene {
     this.clearBuildingDetails();
   }
 
+  private handleAdjustBuildingWorkers(buildingId: string, delta: number): void {
+    const ok = this.villagerSystem?.adjustDesiredWorkers(buildingId, delta);
+    if (!ok) return;
+    const workerInfo = this.computeWorkerInfo();
+    this.game.events.emit(EVENT_KEYS.workerInfoChanged, workerInfo.assigned, workerInfo.totalSlots);
+    this.emitWorkerRoleStats();
+    this.emitBuildingDetails();
+    this.persistState();
+  }
+
   private clearSelection(): void {
     this.selectedBuilding = null;
     this.bulldozeMode = false;
@@ -507,6 +592,21 @@ export class WorldScene extends Phaser.Scene {
     this.emitDevPaintState();
     const workerInfo = this.computeWorkerInfo();
     this.game.events.emit(EVENT_KEYS.workerInfoChanged, workerInfo.assigned, workerInfo.totalSlots);
+    const roleCounts = this.villagerSystem?.getRoleCounts() ?? new Map();
+    const roleExp = this.villagerSystem?.getRoleExperienceSummary();
+    this.game.events.emit(
+      EVENT_KEYS.workerRolesChanged,
+      roleCounts.get('carrier') ?? 0,
+      roleCounts.get('worker') ?? 0,
+      roleCounts.get('builder') ?? 0,
+      roleExp?.carrier.avgLevel ?? 1,
+      roleExp?.carrier.avgProgress ?? 0,
+      roleExp?.worker.avgLevel ?? 1,
+      roleExp?.worker.avgProgress ?? 0,
+      roleExp?.builder.avgLevel ?? 1,
+      roleExp?.builder.avgProgress ?? 0,
+    );
+    this.game.events.emit(EVENT_KEYS.resourceDropsChanged, this.resourceDropSystem?.getCount() ?? 0);
     this.emitBuildingDetails();
   }
 
@@ -517,6 +617,7 @@ export class WorldScene extends Phaser.Scene {
       buildings: this.buildingSystem.getBuildings(),
       roads: this.roadPaintSystem.serialize(),
       foliageObjects: this.foliagePaintSystem.serialize(),
+      resourceDrops: this.resourceDropSystem.serialize(),
       day: this.day,
       camera: this.getCameraState(),
     });
@@ -549,16 +650,24 @@ export class WorldScene extends Phaser.Scene {
     this.buildingSystem.load(starterBuildings);
     this.roadPaintSystem.clear();
     this.foliagePaintSystem.clear();
+    this.seedStarterNature();
+    this.resourceDropSystem.clear();
     this.villagerSystem?.clear();
     this.resourceSystem.setResources(INITIAL_RESOURCES);
     this.village = this.economySystem.syncVillage(starterBuildings, { ...INITIAL_VILLAGE });
     this.day = 1;
     this.dayElapsedMs = 0;
+    this.pendingTreeRegrowth = [];
+    this.lastCarrierCount = -1;
+    this.lastWorkerCount = -1;
+    this.lastBuilderCount = -1;
+    this.lastDropCount = -1;
     this.refreshBuildingAvailability();
     this.clearSelection();
 
     this.renderAllBuildings();
     this.villagerSystem?.syncPopulation(this.village.population);
+    this.initialTreeCount = this.foliagePaintSystem.getAllPositionsFor(TREE_FOLIAGE_IDS).length;
 
     const camera = this.cameras.main;
     camera.setZoom(CAMERA.defaultZoom);
@@ -670,18 +779,25 @@ export class WorldScene extends Phaser.Scene {
 
   private advanceDay(): void {
     this.day += 1;
+    const reclaimed = this.resourceDropSystem.releaseExpiredDrops(this.day);
+    if ((reclaimed.wood ?? 0) > 0 || (reclaimed.stone ?? 0) > 0) {
+      this.resourceSystem.add(reclaimed);
+    }
     const workerCounts = this.villagerSystem?.getWorkerCounts() ?? new Map<string, number>();
+    const workerEfficiency = this.villagerSystem?.getProductionEfficiencyByBuilding() ?? new Map<string, number>();
     const result = this.economySystem.processDay(
       this.day,
       this.resourceSystem.getResources(),
       this.buildingSystem.getBuildings(),
       { ...this.village },
       workerCounts,
+      workerEfficiency,
     );
     this.resourceSystem.setResources(result.resources);
     this.village = result.village;
     this.refreshBuildingAvailability();
     this.villagerSystem?.syncPopulation(this.village.population);
+    this.tryRegrowTrees();
     this.emitFullState();
     this.persistState();
     this.emitDayReport(result.report);
@@ -809,6 +925,171 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private refreshBuildingView(buildingId: string, withTween = false): void {
+    const placed = this.buildingSystem.getBuildings().find((entry) => entry.id === buildingId);
+    if (!placed) {
+      return;
+    }
+    const oldView = this.buildingViews.get(buildingId);
+    if (oldView) {
+      oldView.destroy();
+    }
+    const definition = BUILDING_DEFINITIONS[placed.type];
+    const view = createBuildingView(this, placed, definition, this.tileSize);
+    this.buildingViews.set(buildingId, view);
+    if (withTween) {
+      this.tweens.add({
+        targets: view,
+        alpha: { from: 0, to: 1 },
+        scale: { from: 0.88, to: 1 },
+        duration: 260,
+        ease: 'Back.easeOut',
+      });
+    }
+  }
+
+  private syncConstructionViewStates(): void {
+    for (const placed of this.buildingSystem.getBuildings()) {
+      const view = this.buildingViews.get(placed.id);
+      if (!view) {
+        continue;
+      }
+      if (!placed.construction || placed.construction.stage === 'complete') {
+        continue;
+      }
+      const progress = this.constructionSystem.getConstructionProgress(placed);
+      const alpha = 0.3 + progress * 0.7;
+      view.setAlpha(alpha);
+    }
+  }
+
+  private emitWorkerRoleStats(): void {
+    const roleCounts = this.villagerSystem?.getRoleCounts() ?? new Map();
+    const roleExp = this.villagerSystem?.getRoleExperienceSummary();
+    const carrier = roleCounts.get('carrier') ?? 0;
+    const worker = roleCounts.get('worker') ?? 0;
+    const builder = roleCounts.get('builder') ?? 0;
+    if (
+      carrier === this.lastCarrierCount &&
+      worker === this.lastWorkerCount &&
+      builder === this.lastBuilderCount
+    ) {
+      return;
+    }
+    this.lastCarrierCount = carrier;
+    this.lastWorkerCount = worker;
+    this.lastBuilderCount = builder;
+    this.game.events.emit(
+      EVENT_KEYS.workerRolesChanged,
+      carrier,
+      worker,
+      builder,
+      roleExp?.carrier.avgLevel ?? 1,
+      roleExp?.carrier.avgProgress ?? 0,
+      roleExp?.worker.avgLevel ?? 1,
+      roleExp?.worker.avgProgress ?? 0,
+      roleExp?.builder.avgLevel ?? 1,
+      roleExp?.builder.avgProgress ?? 0,
+    );
+  }
+
+  private emitResourceDropCountIfChanged(): void {
+    const count = this.resourceDropSystem?.getCount() ?? 0;
+    if (count === this.lastDropCount) {
+      return;
+    }
+    this.lastDropCount = count;
+    this.game.events.emit(EVENT_KEYS.resourceDropsChanged, count);
+  }
+
+  private seedStarterNature(): void {
+    const centerX = Math.floor(this.mapWidth * 0.5);
+    const centerY = Math.floor(this.mapHeight * 0.5);
+    this.seedFoliageCluster(TREE_FOLIAGE_IDS, 35, centerX, centerY, 5, 16);
+    this.seedFoliageCluster(STONE_FOLIAGE_IDS, 10, centerX, centerY, 8, 18);
+  }
+
+  private seedFoliageCluster(
+    ids: readonly string[],
+    count: number,
+    centerX: number,
+    centerY: number,
+    minRadius: number,
+    maxRadius: number,
+  ): void {
+    let placed = 0;
+    let attempts = 0;
+    while (placed < count && attempts < count * 40) {
+      attempts += 1;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = minRadius + Math.random() * (maxRadius - minRadius);
+      const x = Math.max(0, Math.min(this.mapWidth - 1, Math.floor(centerX + Math.cos(angle) * radius)));
+      const y = Math.max(0, Math.min(this.mapHeight - 1, Math.floor(centerY + Math.sin(angle) * radius)));
+      if (this.buildingSystem.isTileOccupied(x, y)) {
+        continue;
+      }
+      if (this.foliagePaintSystem.serialize().some((entry) => entry.x === x && entry.y === y)) {
+        continue;
+      }
+      const foliageId = ids[Math.floor(Math.random() * ids.length)];
+      if (this.foliagePaintSystem.place(foliageId, x, y)) {
+        placed += 1;
+      }
+    }
+  }
+
+  private tryRegrowTrees(): void {
+    this.processPendingTreeRegrowth();
+    if (this.day % 5 !== 0) {
+      return;
+    }
+    const currentTrees = this.foliagePaintSystem.getAllPositionsFor(TREE_FOLIAGE_IDS);
+    const cap = Math.floor(this.initialTreeCount * 1.2);
+    if (currentTrees.length >= cap) {
+      return;
+    }
+    for (const tree of currentTrees) {
+      if (Math.random() > 0.15) {
+        continue;
+      }
+      const nx = tree.x + Phaser.Math.Between(-2, 2);
+      const ny = tree.y + Phaser.Math.Between(-2, 2);
+      if (nx < 0 || ny < 0 || nx >= this.mapWidth || ny >= this.mapHeight) {
+        continue;
+      }
+      if (this.buildingSystem.isTileOccupied(nx, ny)) {
+        continue;
+      }
+      if (this.foliagePaintSystem.serialize().some((entry) => entry.x === nx && entry.y === ny)) {
+        continue;
+      }
+      if (this.pendingTreeRegrowth.some((entry) => entry.x === nx && entry.y === ny)) {
+        continue;
+      }
+      this.pendingTreeRegrowth.push({ x: nx, y: ny, growDay: this.day + 3 });
+      if (currentTrees.length + this.pendingTreeRegrowth.length >= cap) {
+        break;
+      }
+    }
+  }
+
+  private processPendingTreeRegrowth(): void {
+    if (this.pendingTreeRegrowth.length === 0) {
+      return;
+    }
+    const ready = this.pendingTreeRegrowth.filter((entry) => entry.growDay <= this.day);
+    this.pendingTreeRegrowth = this.pendingTreeRegrowth.filter((entry) => entry.growDay > this.day);
+    for (const entry of ready) {
+      if (this.buildingSystem.isTileOccupied(entry.x, entry.y)) {
+        continue;
+      }
+      if (this.foliagePaintSystem.serialize().some((f) => f.x === entry.x && f.y === entry.y)) {
+        continue;
+      }
+      this.foliagePaintSystem.place('tree_pine_small', entry.x, entry.y);
+    }
+  }
+
   private refreshBuildingAvailability(): void {
     this.buildingAvailability = this.progressionSystem.getAvailabilityMap(
       this.day,
@@ -867,6 +1148,12 @@ export class WorldScene extends Phaser.Scene {
     const workerSlots = production?.workerSlots ?? 0;
     const workersAssigned = this.villagerSystem?.getWorkerCounts().get(placed.id) ?? 0;
     const effectiveWorkers = workerSlots > 0 ? Math.min(workersAssigned, workerSlots) : 0;
+    const assignment = this.villagerSystem?.getBuildingAssignmentInfo(placed.id) ?? {
+      role: null,
+      slots: 0,
+      assigned: 0,
+      desired: 0,
+    };
     const resources = this.resourceSystem.getResources();
 
     const consumes = Object.entries(production?.consumes ?? {}).map(([resource, amount]) => ({
@@ -885,6 +1172,14 @@ export class WorldScene extends Phaser.Scene {
 
     let status: BuildingRuntimeStatus = 'closed';
     let statusLabel = 'Closed';
+    if (placed.construction && placed.construction.stage !== 'complete') {
+      status = 'blocked';
+      if (placed.construction.stage === 'foundation') {
+        statusLabel = 'Under construction (awaiting resources)';
+      } else {
+        statusLabel = 'Under construction (builder needed)';
+      }
+    } else
     if (workerSlots > 0) {
       if (effectiveWorkers <= 0) {
         status = 'closed';
@@ -922,6 +1217,10 @@ export class WorldScene extends Phaser.Scene {
       produces,
       consumes,
       moraleBonus,
+      assignmentRole: assignment.role,
+      assignmentAssigned: assignment.assigned,
+      assignmentDesired: assignment.desired,
+      assignmentSlots: assignment.slots,
     };
   }
 }

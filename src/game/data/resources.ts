@@ -1,11 +1,35 @@
 import type { Resources, VillageState } from '../types/game';
 
 export const INITIAL_RESOURCES: Resources = {
-  wood: 30,
-  stone: 20,
-  food: 20,
+  wood: 40,
+  stone: 25,
+  food: 25,
   tools: 3,
   weapons: 0,
+  grain: 12,
+  flour: 0,
+  coal: 4,
+  iron_ore: 3,
+  copper_ore: 2,
+  tin_ore: 2,
+  silver_ore: 0,
+  gold_ore: 0,
+  bronze_ingot: 0,
+  iron_ingot: 0,
+  silver_ingot: 0,
+  gold_ingot: 0,
+  livestock: 0,
+  meat: 0,
+  milk: 0,
+  cheese: 0,
+  fish: 2,
+  smoked_fish: 0,
+  vegetables: 3,
+  pickaxe: 2,
+  axe: 2,
+  shovel: 2,
+  knife: 2,
+  hammer: 2,
 };
 
 export const INITIAL_VILLAGE: VillageState = {

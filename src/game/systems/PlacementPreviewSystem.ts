@@ -106,7 +106,14 @@ export class PlacementPreviewSystem {
       onLockedBuilding();
       return;
     }
-    const canAfford = this.resourceSystem.canAfford(definition.cost);
+    const upfrontCost: Record<string, number> = {};
+    for (const [resource, value] of Object.entries(definition.cost)) {
+      const amount = value ?? 0;
+      if (amount > 0) {
+        upfrontCost[resource] = Math.max(1, Math.floor(amount * 0.2));
+      }
+    }
+    const canAfford = this.resourceSystem.canAfford(upfrontCost);
     const placement = this.buildingSystem.canPlace(
       state.selectedBuilding,
       gridPos.x,

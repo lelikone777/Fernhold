@@ -62,6 +62,7 @@ export class PreloadScene extends Phaser.Scene {
     registerTerrainTextures(this);
     this.registerFullGround();
     this.createFoliagePlaceholderTextures();
+    this.createResourceDropTextures();
     this.createVillagerSpritesheets();
     this.createSmokeParticleTexture();
     this.scene.start('WorldScene');
@@ -508,14 +509,25 @@ export class PreloadScene extends Phaser.Scene {
         continue;
       }
 
-      const graphics = this.make.graphics();
-      if (foliage.shape === 'pine') {
-        this.drawPine(graphics, foliage);
-      } else {
-        this.drawRoundTree(graphics, foliage);
+      if (foliage.id.startsWith('stone_deposit')) {
+        const graphics = this.make.graphics();
+        this.drawStoneDeposit(graphics, foliage);
+        graphics.generateTexture(foliage.textureKey, foliage.width, foliage.height);
+        graphics.destroy();
+        continue;
       }
-      graphics.generateTexture(foliage.textureKey, foliage.width, foliage.height);
-      graphics.destroy();
+      if (this.drawDetailedTreeTexture(foliage)) {
+        continue;
+      }
+
+      const fallbackGraphics = this.make.graphics();
+      if (foliage.shape === 'pine') {
+        this.drawPine(fallbackGraphics, foliage);
+      } else {
+        this.drawRoundTree(fallbackGraphics, foliage);
+      }
+      fallbackGraphics.generateTexture(foliage.textureKey, foliage.width, foliage.height);
+      fallbackGraphics.destroy();
     }
   }
 
@@ -693,6 +705,242 @@ export class PreloadScene extends Phaser.Scene {
     graphics.fillRect(mid - 2, baseY - 2, 4, 10);
   }
 
+  private drawDetailedTreeTexture(foliage: (typeof DEV_FOLIAGE_ITEMS)[number]): boolean {
+    const canvas = document.createElement('canvas');
+    canvas.width = foliage.width;
+    canvas.height = foliage.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return false;
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0, 0, foliage.width, foliage.height);
+
+    this.drawTreeGroundShadow(ctx, foliage);
+    if (foliage.shape === 'pine') {
+      this.drawDetailedPine(ctx, foliage);
+    } else {
+      this.drawDetailedRoundTree(ctx, foliage);
+    }
+
+    this.textures.addCanvas(foliage.textureKey, canvas);
+    return true;
+  }
+
+  private drawTreeGroundShadow(
+    ctx: CanvasRenderingContext2D,
+    foliage: (typeof DEV_FOLIAGE_ITEMS)[number],
+  ): void {
+    const w = foliage.width;
+    const h = foliage.height;
+    const shadowW = w * 0.55;
+    const shadowH = Math.max(4, h * 0.1);
+    const cx = w * 0.5;
+    const cy = h - shadowH * 0.75;
+    const gradient = ctx.createRadialGradient(cx, cy, 1, cx, cy, shadowW * 0.55);
+    gradient.addColorStop(0, 'rgba(0,0,0,0.20)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, shadowW * 0.55, shadowH, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawDetailedPine(
+    ctx: CanvasRenderingContext2D,
+    foliage: (typeof DEV_FOLIAGE_ITEMS)[number],
+  ): void {
+    const w = foliage.width;
+    const h = foliage.height;
+    const cx = w * 0.5;
+    const trunkTop = h * 0.68;
+    const trunkW = Math.max(4, w * 0.16);
+    const trunkH = h - trunkTop;
+
+    const trunkBase = this.toRgb(foliage.trunkColor);
+    const trunkGrad = ctx.createLinearGradient(cx, trunkTop, cx + trunkW * 0.5, h);
+    trunkGrad.addColorStop(0, this.rgbCss(this.adjustRgb(trunkBase, 18)));
+    trunkGrad.addColorStop(1, this.rgbCss(this.adjustRgb(trunkBase, -26)));
+    ctx.fillStyle = trunkGrad;
+    this.roundRectPath(ctx, cx - trunkW * 0.5, trunkTop, trunkW, trunkH, 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(44, 26, 16, 0.35)';
+    ctx.lineWidth = Math.max(1, w * 0.035);
+    for (let i = 0; i < 4; i += 1) {
+      const y = trunkTop + (i + 0.4) * (trunkH / 4);
+      ctx.beginPath();
+      ctx.moveTo(cx - trunkW * 0.35, y);
+      ctx.lineTo(cx + trunkW * 0.35, y);
+      ctx.stroke();
+    }
+
+    const canopyMain = this.toRgb(foliage.canopyColor);
+    const canopyShade = this.toRgb(foliage.shadeColor);
+    const layers = Math.max(4, Math.round(h / 13));
+    const maxRadius = w * 0.48;
+    const minRadius = w * 0.23;
+    for (let i = 0; i < layers; i += 1) {
+      const t = layers <= 1 ? 0 : i / (layers - 1);
+      const topY = 2 + t * (h * 0.52);
+      const layerH = h * (0.16 + t * 0.06);
+      const radius = maxRadius - (maxRadius - minRadius) * t;
+
+      const layerGrad = ctx.createLinearGradient(cx, topY, cx, topY + layerH);
+      layerGrad.addColorStop(0, this.rgbCss(this.adjustRgb(canopyMain, 20 - t * 14)));
+      layerGrad.addColorStop(0.6, this.rgbCss(this.adjustRgb(canopyMain, -2 - t * 7)));
+      layerGrad.addColorStop(1, this.rgbCss(this.adjustRgb(canopyShade, -8)));
+      ctx.fillStyle = layerGrad;
+
+      this.pineLayerPath(ctx, cx, topY, radius, layerH, 7 + i);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(16, 30, 16, 0.20)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.beginPath();
+    ctx.ellipse(cx - w * 0.12, h * 0.3, w * 0.1, h * 0.08, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private pineLayerPath(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    topY: number,
+    radius: number,
+    layerH: number,
+    teeth: number,
+  ): void {
+    const left = cx - radius;
+    const right = cx + radius;
+    const bottom = topY + layerH;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, topY);
+    ctx.lineTo(right, bottom);
+    const step = (right - left) / teeth;
+    for (let i = teeth; i >= 0; i -= 1) {
+      const x = left + i * step;
+      const wave = i % 2 === 0 ? 0 : layerH * 0.12;
+      ctx.lineTo(x, bottom + wave);
+    }
+    ctx.closePath();
+  }
+
+  private drawDetailedRoundTree(
+    ctx: CanvasRenderingContext2D,
+    foliage: (typeof DEV_FOLIAGE_ITEMS)[number],
+  ): void {
+    const w = foliage.width;
+    const h = foliage.height;
+    const cx = w * 0.5;
+
+    const trunkW = Math.max(4, w * 0.17);
+    const trunkH = h * 0.31;
+    const trunkX = cx - trunkW * 0.5;
+    const trunkY = h - trunkH;
+
+    const trunkBase = this.toRgb(foliage.trunkColor);
+    const trunkGrad = ctx.createLinearGradient(trunkX, trunkY, trunkX + trunkW, h);
+    trunkGrad.addColorStop(0, this.rgbCss(this.adjustRgb(trunkBase, 15)));
+    trunkGrad.addColorStop(1, this.rgbCss(this.adjustRgb(trunkBase, -25)));
+    ctx.fillStyle = trunkGrad;
+    this.roundRectPath(ctx, trunkX, trunkY, trunkW, trunkH, 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(46, 26, 16, 0.3)';
+    ctx.lineWidth = Math.max(1, w * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(cx, trunkY + 1);
+    ctx.lineTo(cx, h - 2);
+    ctx.stroke();
+
+    const canopyBase = this.toRgb(foliage.canopyColor);
+    const canopyShade = this.toRgb(foliage.shadeColor);
+    const blobs = [
+      { x: cx, y: h * 0.38, rx: w * 0.29, ry: h * 0.23 },
+      { x: cx - w * 0.2, y: h * 0.44, rx: w * 0.24, ry: h * 0.21 },
+      { x: cx + w * 0.2, y: h * 0.45, rx: w * 0.24, ry: h * 0.2 },
+      { x: cx - w * 0.03, y: h * 0.28, rx: w * 0.24, ry: h * 0.19 },
+      { x: cx + w * 0.03, y: h * 0.5, rx: w * 0.28, ry: h * 0.2 },
+    ];
+
+    for (let i = 0; i < blobs.length; i += 1) {
+      const blob = blobs[i];
+      const g = ctx.createRadialGradient(
+        blob.x - blob.rx * 0.25,
+        blob.y - blob.ry * 0.35,
+        1,
+        blob.x,
+        blob.y,
+        Math.max(blob.rx, blob.ry),
+      );
+      g.addColorStop(0, this.rgbCss(this.adjustRgb(canopyBase, 28 - i * 4)));
+      g.addColorStop(0.55, this.rgbCss(this.adjustRgb(canopyBase, 2 - i * 3)));
+      g.addColorStop(1, this.rgbCss(this.adjustRgb(canopyShade, -6)));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(blob.x, blob.y, blob.rx, blob.ry, i % 2 === 0 ? -0.12 : 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20, 36, 18, 0.16)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    ctx.beginPath();
+    ctx.ellipse(cx - w * 0.18, h * 0.3, w * 0.1, h * 0.08, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private roundRectPath(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): void {
+    const r = Math.max(0, Math.min(radius, Math.min(width, height) * 0.5));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  private toRgb(hex: number): { r: number; g: number; b: number } {
+    return {
+      r: (hex >> 16) & 0xff,
+      g: (hex >> 8) & 0xff,
+      b: hex & 0xff,
+    };
+  }
+
+  private adjustRgb(
+    rgb: { r: number; g: number; b: number },
+    amount: number,
+  ): { r: number; g: number; b: number } {
+    return {
+      r: Math.max(0, Math.min(255, rgb.r + amount)),
+      g: Math.max(0, Math.min(255, rgb.g + amount)),
+      b: Math.max(0, Math.min(255, rgb.b + amount)),
+    };
+  }
+
+  private rgbCss(rgb: { r: number; g: number; b: number }): string {
+    return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+  }
+
   private drawRoundTree(graphics: Phaser.GameObjects.Graphics, foliage: (typeof DEV_FOLIAGE_ITEMS)[number]): void {
     const mid = foliage.width * 0.5;
     const canopyY = foliage.height * 0.42;
@@ -705,5 +953,41 @@ export class PreloadScene extends Phaser.Scene {
     graphics.fillCircle(mid + 9, canopyY + 5, Math.max(9, foliage.width * 0.24));
     graphics.fillStyle(foliage.trunkColor, 1);
     graphics.fillRect(mid - 3, foliage.height - 14, 6, 14);
+  }
+
+  private drawStoneDeposit(
+    graphics: Phaser.GameObjects.Graphics,
+    foliage: (typeof DEV_FOLIAGE_ITEMS)[number],
+  ): void {
+    const mid = foliage.width * 0.5;
+    const baseY = foliage.height - 2;
+    const radius = Math.max(7, foliage.width * 0.22);
+    graphics.fillStyle(foliage.shadeColor, 1);
+    graphics.fillCircle(mid - 6, baseY - radius + 2, radius);
+    graphics.fillCircle(mid + 5, baseY - radius + 1, radius - 1);
+    graphics.fillStyle(foliage.canopyColor, 1);
+    graphics.fillCircle(mid - 2, baseY - radius - 2, radius);
+    graphics.fillCircle(mid + 8, baseY - radius - 2, radius - 1);
+    graphics.fillStyle(foliage.trunkColor, 1);
+    graphics.fillCircle(mid + 1, baseY - radius + 1, radius - 2);
+  }
+
+  private createResourceDropTextures(): void {
+    this.createDropTexture('resource_drop_wood', 0x7b512d, 0x5b3d22);
+    this.createDropTexture('resource_drop_stone', 0x8b9099, 0x646a73);
+  }
+
+  private createDropTexture(key: string, fill: number, shade: number): void {
+    if (this.textures.exists(key)) {
+      return;
+    }
+    const graphics = this.make.graphics();
+    graphics.fillStyle(shade, 1);
+    graphics.fillRoundedRect(1, 5, 12, 8, 3);
+    graphics.fillStyle(fill, 1);
+    graphics.fillRoundedRect(2, 3, 12, 8, 3);
+    graphics.fillRoundedRect(5, 1, 8, 7, 3);
+    graphics.generateTexture(key, 16, 16);
+    graphics.destroy();
   }
 }

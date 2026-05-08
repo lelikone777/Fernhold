@@ -22,6 +22,10 @@ export class BuildingSystem {
     return [...this.buildings];
   }
 
+  public getBuildingById(id: string): PlacedBuilding | null {
+    return this.buildings.find((building) => building.id === id) ?? null;
+  }
+
   public load(buildings: PlacedBuilding[]): void {
     this.clear();
     for (const building of buildings) {

@@ -58,6 +58,9 @@ export class UIScene extends Phaser.Scene {
       onCloseBuildingDetails: () => {
         this.game.events.emit(EVENT_KEYS.requestCloseBuildingDetails);
       },
+      onAdjustBuildingWorkers: (buildingId, delta) => {
+        this.game.events.emit(EVENT_KEYS.requestAdjustBuildingWorkers, buildingId, delta);
+      },
     });
 
     this.game.events.on(EVENT_KEYS.resourcesChanged, this.handleResources, this);
@@ -68,6 +71,8 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on(EVENT_KEYS.devPaintStateChanged, this.handleDevPaintState, this);
     this.game.events.on(EVENT_KEYS.toast, this.handleToast, this);
     this.game.events.on(EVENT_KEYS.workerInfoChanged, this.handleWorkerInfo, this);
+    this.game.events.on(EVENT_KEYS.workerRolesChanged, this.handleWorkerRoles, this);
+    this.game.events.on(EVENT_KEYS.resourceDropsChanged, this.handleResourceDrops, this);
     this.game.events.on(EVENT_KEYS.buildingDetailsChanged, this.handleBuildingDetails, this);
 
     const world = this.scene.get('WorldScene') as WorldScene | undefined;
@@ -84,6 +89,18 @@ export class UIScene extends Phaser.Scene {
         snapshot.selectedRoadId,
       );
       this.handleWorkerInfo(snapshot.workersAssigned, snapshot.workerSlots);
+      this.handleWorkerRoles(
+        snapshot.carrierWorkers,
+        snapshot.workerWorkers,
+        snapshot.builderWorkers,
+        snapshot.carrierLevel,
+        snapshot.carrierProgress,
+        snapshot.workerLevel,
+        snapshot.workerProgress,
+        snapshot.builderLevel,
+        snapshot.builderProgress,
+      );
+      this.handleResourceDrops(snapshot.resourceDropCount);
       this.handleBuildingDetails(snapshot.buildingDetails);
     }
 
@@ -96,6 +113,8 @@ export class UIScene extends Phaser.Scene {
       this.game.events.off(EVENT_KEYS.devPaintStateChanged, this.handleDevPaintState, this);
       this.game.events.off(EVENT_KEYS.toast, this.handleToast, this);
       this.game.events.off(EVENT_KEYS.workerInfoChanged, this.handleWorkerInfo, this);
+      this.game.events.off(EVENT_KEYS.workerRolesChanged, this.handleWorkerRoles, this);
+      this.game.events.off(EVENT_KEYS.resourceDropsChanged, this.handleResourceDrops, this);
       this.game.events.off(EVENT_KEYS.buildingDetailsChanged, this.handleBuildingDetails, this);
       this.hud?.destroy();
     });
@@ -135,6 +154,34 @@ export class UIScene extends Phaser.Scene {
 
   private handleWorkerInfo(assigned: number, totalSlots: number): void {
     this.hud?.setWorkerInfo(assigned, totalSlots);
+  }
+
+  private handleWorkerRoles(
+    carrier: number,
+    worker: number,
+    builder: number,
+    carrierLevel: number,
+    carrierProgress: number,
+    workerLevel: number,
+    workerProgress: number,
+    builderLevel: number,
+    builderProgress: number,
+  ): void {
+    this.hud?.setWorkerRoles(
+      carrier,
+      worker,
+      builder,
+      carrierLevel,
+      carrierProgress,
+      workerLevel,
+      workerProgress,
+      builderLevel,
+      builderProgress,
+    );
+  }
+
+  private handleResourceDrops(count: number): void {
+    this.hud?.setDropCount(count);
   }
 
   private handleBuildingDetails(payload: BuildingDetailsPayload | null): void {

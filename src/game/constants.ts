@@ -1,6 +1,6 @@
 export const GAME_NAME = 'Fernhold';
-export const SAVE_VERSION = 1;
-export const SAVE_KEY = 'fernhold_save_v1';
+export const SAVE_VERSION = 2;
+export const SAVE_KEY = 'fernhold_save_v2';
 export const DAY_DURATION_MS = 12000;
 
 export const EVENT_KEYS = {
@@ -12,6 +12,8 @@ export const EVENT_KEYS = {
   devPaintStateChanged: 'fernhold:dev-paint-state-changed',
   dayChanged: 'fernhold:day-changed',
   workerInfoChanged: 'fernhold:worker-info-changed',
+  workerRolesChanged: 'fernhold:worker-roles-changed',
+  resourceDropsChanged: 'fernhold:resource-drops-changed',
   toast: 'fernhold:toast',
   requestSelectBuilding: 'fernhold:request-select-building',
   requestSetBulldozeMode: 'fernhold:request-set-bulldoze-mode',
@@ -21,6 +23,7 @@ export const EVENT_KEYS = {
   requestSelectDevRoad: 'fernhold:request-select-dev-road',
   requestEraseDevPaintTile: 'fernhold:request-erase-dev-paint-tile',
   requestCloseBuildingDetails: 'fernhold:request-close-building-details',
+  requestAdjustBuildingWorkers: 'fernhold:request-adjust-building-workers',
 } as const;
 
 export const CAMERA = {

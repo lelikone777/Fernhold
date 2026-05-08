@@ -6,6 +6,7 @@ import type {
   PlacedBuilding,
   PlacedFoliage,
   PlacedRoad,
+  ResourceDrop,
   Resources,
   VillageState,
 } from '../types/game';
@@ -16,6 +17,7 @@ export interface LoadedWorldState {
   buildings: PlacedBuilding[];
   roads: PlacedRoad[];
   foliageObjects: PlacedFoliage[];
+  resourceDrops: ResourceDrop[];
   day: number;
   camera?: CameraState;
   terrainSeed?: number;
@@ -34,6 +36,7 @@ export class WorldPersistenceController {
       buildings: save?.buildings ?? starterBuildings,
       roads: save?.roads ?? [],
       foliageObjects: save?.foliageObjects ?? [],
+      resourceDrops: save?.resourceDrops ?? [],
       day: save?.day ?? 1,
       camera: save?.camera,
       terrainSeed: save?.terrainSeed,

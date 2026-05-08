@@ -5,7 +5,14 @@ import type { BuildingSystem } from './BuildingSystem';
 import type { EconomySystem } from './EconomySystem';
 import type { ResourceSystem } from './ResourceSystem';
 import type { VillagerSystem } from './VillagerSystem';
-import type { BuildPlacementError, BuildingAvailability, BuildingType, VillageState } from '../types/game';
+import type { ConstructionSystem } from './ConstructionSystem';
+import type {
+  BuildPlacementError,
+  BuildingAvailability,
+  BuildingType,
+  ResourceCost,
+  VillageState,
+} from '../types/game';
 import { worldToGrid } from '../utils/grid';
 
 interface PlacementContext {
@@ -37,6 +44,7 @@ export class PlacementSystem {
   private readonly resourceSystem: ResourceSystem;
   private readonly economySystem: EconomySystem;
   private readonly villagerSystem: VillagerSystem;
+  private readonly constructionSystem: ConstructionSystem;
   private readonly handlers: PlacementHandlers;
 
   constructor(
@@ -45,6 +53,7 @@ export class PlacementSystem {
     resourceSystem: ResourceSystem,
     economySystem: EconomySystem,
     villagerSystem: VillagerSystem,
+    constructionSystem: ConstructionSystem,
     handlers: PlacementHandlers,
   ) {
     this.scene = scene;
@@ -52,6 +61,7 @@ export class PlacementSystem {
     this.resourceSystem = resourceSystem;
     this.economySystem = economySystem;
     this.villagerSystem = villagerSystem;
+    this.constructionSystem = constructionSystem;
     this.handlers = handlers;
   }
 
@@ -75,7 +85,8 @@ export class PlacementSystem {
       this.handlers.clearSelection();
       return;
     }
-    if (!this.resourceSystem.canAfford(definition.cost)) {
+    const upfrontCost = this.getUpfrontCost(definition.cost);
+    if (!this.resourceSystem.canAfford(upfrontCost)) {
       this.handlers.emitToast(HUD_MESSAGES.notEnoughResources);
       this.handlers.updatePreview(pointer);
       return;
@@ -91,7 +102,7 @@ export class PlacementSystem {
       this.handlers.updatePreview(pointer);
       return;
     }
-    const spent = this.resourceSystem.spend(definition.cost);
+    const spent = this.resourceSystem.spend(upfrontCost);
     if (!spent) {
       this.handlers.emitToast(HUD_MESSAGES.notEnoughResources);
       return;
@@ -103,10 +114,11 @@ export class PlacementSystem {
       ctx.gridBounds,
     );
     if (!result.ok || !result.building) {
-      this.resourceSystem.add(definition.cost);
+      this.resourceSystem.add(upfrontCost);
       this.emitPlacementError(result.error);
       return;
     }
+    this.constructionSystem.initConstruction(result.building, definition.cost, upfrontCost, 0.2);
     const view = createBuildingView(this.scene, result.building, definition, ctx.tileSize);
     playPlaceTween(this.scene, view);
     this.handlers.onBuildingPlaced(result.building.id, view);
@@ -152,5 +164,17 @@ export class PlacementSystem {
       cannot_build_here: HUD_MESSAGES.cannotBuild,
     };
     this.handlers.emitToast(messages[error]);
+  }
+
+  private getUpfrontCost(cost: ResourceCost): ResourceCost {
+    const upfront: ResourceCost = {};
+    for (const [resource, value] of Object.entries(cost)) {
+      const amount = value ?? 0;
+      if (amount <= 0) {
+        continue;
+      }
+      upfront[resource as keyof ResourceCost] = Math.max(1, Math.floor(amount * 0.2));
+    }
+    return upfront;
   }
 }

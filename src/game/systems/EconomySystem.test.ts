@@ -15,6 +15,30 @@ const baseResources = (): Resources => ({
   food: 50,
   tools: 50,
   weapons: 50,
+  grain: 50,
+  flour: 50,
+  coal: 50,
+  iron_ore: 50,
+  copper_ore: 50,
+  tin_ore: 50,
+  silver_ore: 50,
+  gold_ore: 50,
+  bronze_ingot: 50,
+  iron_ingot: 50,
+  silver_ingot: 50,
+  gold_ingot: 50,
+  livestock: 50,
+  meat: 50,
+  milk: 50,
+  cheese: 50,
+  fish: 50,
+  smoked_fish: 50,
+  vegetables: 50,
+  pickaxe: 50,
+  axe: 50,
+  shovel: 50,
+  knife: 50,
+  hammer: 50,
 });
 
 const baseVillage = (): VillageState => ({
@@ -83,8 +107,7 @@ describe('EconomySystem.processDay', () => {
     const buildings = [makeBuilding('lm', 'lumber_mill_level_1')];
     const village = baseVillage();
     const result = economy.processDay(2, baseResources(), buildings, village, noWorkers);
-    // 4 idle villagers gather 4 wood each — no building production
-    expect(result.report.produced.wood).toBe(4);
+    expect(result.report.produced.wood ?? 0).toBe(0);
   });
 
   it('scales production with partial staffing', () => {
@@ -95,12 +118,12 @@ describe('EconomySystem.processDay', () => {
     expect(full.report.produced.wood ?? 0).toBeGreaterThan(half.report.produced.wood ?? 0);
   });
 
-  it('idle villagers gather wood, stone, and food', () => {
+  it('idle villagers gather only food', () => {
     const economy = new EconomySystem();
     const village = { ...baseVillage(), population: 3 };
     const result = economy.processDay(2, baseResources(), [], village, noWorkers);
-    expect(result.report.produced.wood).toBe(3);
-    expect(result.report.produced.stone).toBe(3);
+    expect(result.report.produced.wood ?? 0).toBe(0);
+    expect(result.report.produced.stone ?? 0).toBe(0);
     expect(result.report.produced.food).toBe(3);
     expect(result.report.notes.some((n) => n.includes('gather'))).toBe(true);
   });
